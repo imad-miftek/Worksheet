@@ -13,10 +13,7 @@
         </Grid.ColumnDefinitions>
 
         <!--Left Sidebar-->
-        <StackPanel Grid.Column="0" Background="LightGray">
-            <TextBlock Text="Controls Panel" FontSize="20" FontWeight="Bold" Margin="10"/>
-            <!-- Add more controls here as needed -->
-        </StackPanel>
+        <local:Sidebar Grid.Column="0"/>
 
         <!--Main Content Area-->
         <Grid Grid.Column="1" Background="White">
