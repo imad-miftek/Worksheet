@@ -26,16 +26,10 @@
             </Grid.RowDefinitions>
 
             <!--Navigation Panel-->
-            <StackPanel Grid.Row="0" Background="LightBlue">
-                <TextBlock Text="Navigation" FontSize="20" FontWeight="Bold" Margin="10"/>
-                <!-- Add navigation items here as needed -->
-            </StackPanel>
+            <local:Toolbar Grid.Row="0"/>
 
             <!--Worksheet Area-->
-            <Grid Grid.Row="1" Background="WhiteSmoke">
-                <TextBlock Text="Worksheet Area" FontSize="20" FontWeight="Bold" Margin="10" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                <!-- Add worksheet content here as needed -->
-            </Grid>
+            <local:WorksheetGrid Grid.Row="1"/>
         </Grid>
     </Grid>
 </Window>
