@@ -5,5 +5,5 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:local="clr-namespace:Worksheet"
              mc:Ignorable="d">
-    <WrapPanel x:Name="WorksheetGridContainer" Background="WhiteSmoke" />
+    <Canvas x:Name="WorksheetGridContainer" Background="WhiteSmoke"/>
 </UserControl>
