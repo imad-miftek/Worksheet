@@ -19,6 +19,12 @@ namespace Worksheet
         public MainWindow()
         {
             InitializeComponent();
+            ToolbarControl.PlotButtonClicked += Toolbar_PlotButtonClicked;
+        }
+
+        private void Toolbar_PlotButtonClicked(object? sender, System.EventArgs e)
+        {
+            WorksheetGridControl.AddPlot();
         }
     }
 }

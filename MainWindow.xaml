@@ -23,10 +23,10 @@
             </Grid.RowDefinitions>
 
             <!--Navigation Panel-->
-            <local:Toolbar Grid.Row="0"/>
+            <local:Toolbar x:Name="ToolbarControl" Grid.Row="0"/>
 
             <!--Worksheet Area-->
-            <local:WorksheetGrid Grid.Row="1"/>
+            <local:WorksheetGrid x:Name="WorksheetGridControl" Grid.Row="1"/>
         </Grid>
     </Grid>
 </Window>
