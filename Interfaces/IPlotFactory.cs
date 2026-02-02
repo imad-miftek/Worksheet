@@ -1,6 +1,6 @@
 using ScottPlot.WPF;
 
-namespace Worksheet
+namespace Worksheet.Interfaces
 {
     /// <summary>
     /// Factory for creating and configuring WpfPlot instances.

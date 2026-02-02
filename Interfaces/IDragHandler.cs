@@ -1,6 +1,6 @@
 using System.Windows.Controls;
 
-namespace Worksheet
+namespace Worksheet.Interfaces
 {
     /// <summary>
     /// Handles drag interactions for moving worksheet items.

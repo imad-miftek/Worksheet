@@ -1,6 +1,6 @@
 using System;
 
-namespace Worksheet
+namespace Worksheet.Interfaces
 {
     public interface ISelectionManager<T> where T : class
     {

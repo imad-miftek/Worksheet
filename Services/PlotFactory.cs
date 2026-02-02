@@ -1,8 +1,9 @@
 using System;
 using ScottPlot.Interactivity.UserActionResponses;
 using ScottPlot.WPF;
+using Worksheet.Interfaces;
 
-namespace Worksheet
+namespace Worksheet.Services
 {
     public class PlotFactory : IPlotFactory
     {

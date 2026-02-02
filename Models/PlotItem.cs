@@ -2,8 +2,9 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using ScottPlot.WPF;
+using Worksheet.Interfaces;
 
-namespace Worksheet
+namespace Worksheet.Models
 {
     /// <summary>
     /// A worksheet item containing a ScottPlot chart.

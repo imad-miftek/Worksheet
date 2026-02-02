@@ -1,6 +1,6 @@
 using System.Windows.Controls;
 
-namespace Worksheet
+namespace Worksheet.Interfaces
 {
     /// <summary>
     /// Interface for items that can be placed on a worksheet (plots, images, text boxes, etc.)

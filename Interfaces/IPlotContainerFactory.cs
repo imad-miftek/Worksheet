@@ -1,6 +1,7 @@
 using ScottPlot.WPF;
+using Worksheet.Models;
 
-namespace Worksheet
+namespace Worksheet.Interfaces
 {
     /// <summary>
     /// Factory for creating the container DOM hierarchy for a plot.

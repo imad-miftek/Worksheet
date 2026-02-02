@@ -1,8 +1,9 @@
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using ScottPlot.WPF;
+using Worksheet.Models;
 
-namespace Worksheet
+namespace Worksheet.Interfaces
 {
     /// <summary>
     /// Manages thumb creation, positioning, and resize behavior for plot containers.

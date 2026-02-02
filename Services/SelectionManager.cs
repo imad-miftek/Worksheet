@@ -1,7 +1,8 @@
 using System;
 using System.Collections.Generic;
+using Worksheet.Interfaces;
 
-namespace Worksheet
+namespace Worksheet.Services
 {
     public class SelectionManager<T> : ISelectionManager<T> where T : class
     {

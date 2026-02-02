@@ -1,8 +1,11 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using Worksheet.Interfaces;
+using Worksheet.Models;
+using Worksheet.Services;
 
-namespace Worksheet
+namespace Worksheet.Views
 {
     public partial class WorksheetGrid : UserControl
     {

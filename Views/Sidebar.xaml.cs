@@ -13,23 +13,16 @@ using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
 using System.Windows.Shapes;
 
-namespace Worksheet
+namespace Worksheet.Views
 {
     /// <summary>
-    /// Interaction logic for Toolbar.xaml
+    /// Interaction logic for Sidebar.xaml
     /// </summary>
-    public partial class Toolbar : UserControl
+    public partial class Sidebar : UserControl
     {
-        public event EventHandler? PlotButtonClicked;
-
-        public Toolbar()
+        public Sidebar()
         {
             InitializeComponent();
-        }
-
-        private void Button_Click(object sender, RoutedEventArgs e)
-        {
-            PlotButtonClicked?.Invoke(this, EventArgs.Empty);
         }
     }
 }

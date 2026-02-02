@@ -1,6 +1,6 @@
 using System.Windows.Controls;
 
-namespace Worksheet
+namespace Worksheet.Models
 {
     /// <summary>
     /// Contains all the UI elements that make up a draggable, resizable plot on the worksheet.

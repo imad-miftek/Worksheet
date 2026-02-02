@@ -5,8 +5,10 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using ScottPlot.WPF;
+using Worksheet.Interfaces;
+using Worksheet.Models;
 
-namespace Worksheet
+namespace Worksheet.Services
 {
     public class ThumbManager : IThumbManager
     {
