@@ -33,18 +33,6 @@ namespace Worksheet.Services
             _spectralRibbonContextMenu = spectralRibbonContextMenu;
         }
 
-        public WpfPlot CreatePlot(double width, double height)
-        {
-            var plot = CreateBasePlot(width, height);
-
-            // Add sample data
-            plot.Plot.Add.Scatter(
-                new double[] { 1, 2, 3, 4, 5 },
-                new double[] { 1, 4, 9, 16, 25 });
-
-            return plot;
-        }
-
         public WpfPlot CreatePlot(double width, double height, PlotType plotType, out PlotView plotView)
         {
             var plot = CreateBasePlot(width, height);
