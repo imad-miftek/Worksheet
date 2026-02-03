@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace Worksheet.Models.Data
 {
@@ -6,12 +7,15 @@ namespace Worksheet.Models.Data
 
     public class SpectralRibbonProcessedData : ProcessedPlotData
     {
-        public SpectralRibbonProcessedData(Guid plotId, double[][] channels)
+        public SpectralRibbonProcessedData(Guid plotId, double[,] data, IReadOnlyList<string> channelNames)
             : base(plotId, PlotType.SpectralRibbon)
         {
-            Channels = channels;
+            Data = data;
+            ChannelNames = channelNames;
         }
 
-        public double[][] Channels { get; }
+        public double[,] Data { get; }
+
+        public IReadOnlyList<string> ChannelNames { get; }
     }
 }
