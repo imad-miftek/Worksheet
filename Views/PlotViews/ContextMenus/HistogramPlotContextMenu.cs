@@ -1,8 +1,8 @@
 using System.Windows.Controls;
 using System.Windows;
 using Worksheet.Models;
-using Worksheet.Views.Dialogs;
 using Worksheet.Views.PlotViews;
+using Worksheet.Views.PlotViews.Dialogs;
 
 namespace Worksheet.Views.PlotViews.ContextMenus
 {

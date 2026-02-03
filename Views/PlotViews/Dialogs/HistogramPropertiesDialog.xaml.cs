@@ -1,8 +1,7 @@
-using System.Linq;
 using System.Windows;
 using Worksheet.Models;
 
-namespace Worksheet.Views.Dialogs
+namespace Worksheet.Views.PlotViews.Dialogs
 {
     public partial class HistogramPropertiesDialog : Window
     {
