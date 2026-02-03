@@ -86,9 +86,9 @@ namespace Worksheet.Views.Support
                 PlotType.Pseudocolor => new PlotSettings
                 {
                     PlotType = PlotType.Pseudocolor,
-                    BinCount = 0,
+                    BinCount = 256,
                     XFeature = 0,
-                    YFeature = 0,
+                    YFeature = 1,
                     XAxisScaleType = AxisScaleType.Linear,
                     YAxisScaleType = AxisScaleType.Linear
                 },
