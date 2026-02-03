@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using ScottPlot.WPF;
 using Worksheet.Models;
 using Worksheet.Models.Data;
+using Worksheet.Services;
 using Worksheet.Views.PlotViews.Axes;
 using Worksheet.Views.PlotViews.ContextMenus;
 
@@ -19,8 +20,6 @@ namespace Worksheet.Views.PlotViews
 
         public override void Configure(WpfPlot plot)
         {
-            plot.Plot.Axes.Bottom.Label.Text = "Channel";
-            plot.Plot.Axes.Left.Label.Text = "Intensity";
         }
 
         public override void Render(WpfPlot plot, ProcessedPlotData data)
@@ -39,25 +38,60 @@ namespace Worksheet.Views.PlotViews
                 heatmap.Colormap = CreateColormap();
 
                 plot.Plot.Axes.SetLimitsX(0, channelCount);
-                plot.Plot.Axes.SetLimitsY(0, bins);
-                plot.Plot.Axes.Bottom.Label.Text = "Channel";
-                plot.Plot.Axes.Left.Label.Text = "Intensity";
-                ApplyChannelTicks(plot, spectralData.ChannelNames, channelCount);
-                ApplyYAxisTicks(plot);
+                ApplyChannelTicks(plot, channelCount);
+                ApplyYAxisTicks(plot, bins);
             });
         }
 
-        private void ApplyYAxisTicks(WpfPlot plot)
+        private static void ApplyChannelTicks(WpfPlot plot, int channelCount)
+        {
+            var channelNames = FeatureSelectionStrategy.ChannelNames;
+            var positions = new double[channelCount];
+            var labels = new string[channelCount];
+
+            for (int i = 0; i < channelCount; i++)
+            {
+                positions[i] = i + 0.5;
+                labels[i] = i < channelNames.Count ? channelNames[i] : $"Channel {i + 1}";
+            }
+
+            // Add minor tick positions at channel edges (integer boundaries)
+            var minorPositions = new double[channelCount + 1];
+            for (int i = 0; i <= channelCount; i++)
+                minorPositions[i] = i;
+
+            var tickGen = new FixedLinearTickGenerator(
+                positions,
+                labels,
+                minorPositions);
+            tickGen.MaxTickCount = channelCount;
+
+            plot.Plot.Axes.Bottom.TickGenerator = tickGen;
+            plot.Plot.Axes.Bottom.TickLabelStyle.Rotation = 90;
+            plot.Plot.Axes.SetLimitsX(0, channelCount);
+
+            // Use minor grid lines to align with ribbon edges, and hide minor tick marks
+            plot.Plot.Grid.XAxisStyle.MajorLineStyle.IsVisible = false;
+            plot.Plot.Grid.XAxisStyle.MinorLineStyle.IsVisible = true;
+            plot.Plot.Grid.XAxisStyle.MinorLineStyle.Color = ScottPlot.Colors.Black.WithOpacity(.15);
+            plot.Plot.Grid.XAxisStyle.MinorLineStyle.Width = 1;
+            plot.Plot.Axes.Bottom.MinorTickStyle.Length = 0;
+            plot.Plot.Axes.Bottom.MinorTickStyle.Width = 0;
+        }
+
+        private void ApplyYAxisTicks(WpfPlot plot, int bins)
         {
             switch (Settings.YAxisScaleType)
             {
                 case AxisScaleType.Linear:
                     plot.Plot.Axes.Left.TickGenerator = LinearAxisItem.CreateDataTickGenerator(Settings);
+                    plot.Plot.Axes.SetLimitsY(0, bins);
                     plot.Plot.Grid.MinorLineColor = ScottPlot.Colors.Black.WithOpacity(.05);
                     plot.Plot.Grid.MinorLineWidth = 1;
                     break;
                 case AxisScaleType.Logarithmic:
                     plot.Plot.Axes.Left.TickGenerator = LogarithmicAxisItem.CreateDataTickGenerator(Settings);
+                    plot.Plot.Axes.SetLimitsY(0, bins);
                     plot.Plot.Grid.MajorLineColor = ScottPlot.Colors.Black.WithOpacity(.15);
                     plot.Plot.Grid.MinorLineColor = ScottPlot.Colors.Black.WithOpacity(.05);
                     plot.Plot.Grid.MinorLineWidth = 1;
@@ -65,30 +99,6 @@ namespace Worksheet.Views.PlotViews
                 default:
                     break;
             }
-        }
-
-        private static void ApplyChannelTicks(WpfPlot plot, IReadOnlyList<string> channelNames, int channelCount)
-        {
-            var positions = new double[channelCount];
-            var labels = new string[channelCount];
-            for (int i = 0; i < channelCount; i++)
-            {
-                positions[i] = i + 0.5;
-                labels[i] = channelNames[i];
-            }
-
-            plot.Plot.Axes.Bottom.TickGenerator = new FixedLinearTickGenerator(
-                positions,
-                labels,
-                Array.Empty<double>());
-            plot.Plot.Axes.Bottom.TickLabelStyle.Rotation = 90;
-            plot.Plot.Axes.SetLimitsX(0, channelCount);
-
-            // Use minor grid lines to align with ribbon edges.
-            plot.Plot.Grid.MajorLineColor = ScottPlot.Colors.Black.WithOpacity(.15);
-            plot.Plot.Grid.MajorLineWidth = 1;
-            plot.Plot.Grid.MinorLineColor = ScottPlot.Colors.Black.WithOpacity(0);
-            plot.Plot.Grid.MinorLineWidth = 0;
         }
 
         private static ScottPlot.IColormap CreateColormap()

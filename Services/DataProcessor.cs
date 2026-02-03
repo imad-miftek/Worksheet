@@ -118,23 +118,14 @@ namespace Worksheet.Services
 
         private ProcessedPlotData ProcessSpectralRibbon(PlotSettings settings)
         {
-            var channelNames = FeatureSelectionStrategy.ChannelNames;
-            int channelCount = channelNames.Count;
+            int channelCount = FeatureSelectionStrategy.ChannelNames.Count;
             int bins = settings.GetBinCount();
             // Heatmap expects [rows, cols] = [y, x] so store as [bin, channel].
             var counts = new double[bins, channelCount];
 
-            var channelData = new double[channelCount][];
-            for (int c = 0; c < channelCount; c++)
-                channelData[c] = _dataSource.Get(c);
-
-            var range = GetSpectralRange(channelData, settings.YAxisScaleType);
-            settings.MinValue = range.min;
-            settings.MaxValue = range.max;
-
             for (int c = 0; c < channelCount; c++)
             {
-                var values = channelData[c];
+                var values = _dataSource.Get(c);
                 for (int i = 0; i < values.Length; i++)
                 {
                     double pos = settings.DataValueToBinPosition(values[i], settings.YAxisScaleType);
@@ -179,62 +170,7 @@ namespace Worksheet.Services
                 }
             }
 
-            var names = BuildSpectralChannelNames(channelCount);
-            return new SpectralRibbonProcessedData(settings.Id, counts, names);
-        }
-
-        private static (double min, double max) GetSpectralRange(double[][] channels, AxisScaleType scaleType)
-        {
-            double min = double.MaxValue;
-            double max = double.MinValue;
-            double minPositive = double.MaxValue;
-
-            for (int c = 0; c < channels.Length; c++)
-            {
-                var values = channels[c];
-                for (int i = 0; i < values.Length; i++)
-                {
-                    double value = values[i];
-                    if (value < min) min = value;
-                    if (value > max) max = value;
-                    if (value > 0 && value < minPositive) minPositive = value;
-                }
-            }
-
-            if (min == double.MaxValue || max == double.MinValue)
-                return (0, 1);
-
-            if (scaleType == AxisScaleType.Logarithmic)
-            {
-                if (minPositive == double.MaxValue)
-                    minPositive = 1;
-                if (max <= minPositive)
-                    max = minPositive * 10;
-                return (minPositive, max);
-            }
-
-            if (max <= min)
-                max = min + 1;
-
-            return (min, max);
-        }
-
-        private static string[] BuildSpectralChannelNames(int channelCount)
-        {
-            var baseNames = FeatureSelectionStrategy.ChannelNames;
-            if (baseNames.Count == channelCount)
-                return baseNames.ToArray();
-
-            var names = new string[channelCount];
-            for (int i = 0; i < channelCount; i++)
-            {
-                if (i < baseNames.Count)
-                    names[i] = baseNames[i];
-                else
-                    names[i] = $"Channel {i + 1}";
-            }
-
-            return names;
+            return new SpectralRibbonProcessedData(settings.Id, counts, Array.Empty<string>());
         }
 
         private static double[,] BuildHeatmapData(int width, int height)
