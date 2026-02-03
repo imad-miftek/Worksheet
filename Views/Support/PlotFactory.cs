@@ -3,6 +3,7 @@ using System.Linq;
 using ScottPlot.Interactivity.UserActionResponses;
 using ScottPlot.WPF;
 using Worksheet.Models;
+using Worksheet.Services;
 using Worksheet.Views.PlotViews;
 using Worksheet.Views.PlotViews.Axes;
 using Worksheet.Views.PlotViews.ContextMenus;
@@ -15,20 +16,22 @@ namespace Worksheet.Views.Support
         private readonly HistogramPlotContextMenu _histogramContextMenu;
         private readonly PseudocolorPlotContextMenu _pseudocolorContextMenu;
         private readonly SpectralRibbonPlotContextMenu _spectralRibbonContextMenu;
+        private readonly FeatureSelectionStrategy _featureSelectionStrategy;
 
         public PlotFactory()
-            : this(new AxisFactory(), new HistogramPlotContextMenu(), new PseudocolorPlotContextMenu(), new SpectralRibbonPlotContextMenu())
+            : this(new AxisFactory(), new FeatureSelectionStrategy(), new PseudocolorPlotContextMenu(), new SpectralRibbonPlotContextMenu())
         {
         }
 
         public PlotFactory(
             AxisFactory axisFactory,
-            HistogramPlotContextMenu histogramContextMenu,
+            FeatureSelectionStrategy featureSelectionStrategy,
             PseudocolorPlotContextMenu pseudocolorContextMenu,
             SpectralRibbonPlotContextMenu spectralRibbonContextMenu)
         {
             _axisFactory = axisFactory;
-            _histogramContextMenu = histogramContextMenu;
+            _featureSelectionStrategy = featureSelectionStrategy;
+            _histogramContextMenu = new HistogramPlotContextMenu(_featureSelectionStrategy);
             _pseudocolorContextMenu = pseudocolorContextMenu;
             _spectralRibbonContextMenu = spectralRibbonContextMenu;
         }
@@ -76,8 +79,8 @@ namespace Worksheet.Views.Support
                 {
                     PlotType = PlotType.Histogram,
                     BinCount = 256,
-                    XFeature = "intensity",
-                    YFeature = "frequency",
+                    XFeature = 0,
+                    YFeature = 0,
                     XAxisScaleType = AxisScaleType.Linear,
                     YAxisScaleType = AxisScaleType.Linear
                 },
@@ -85,8 +88,8 @@ namespace Worksheet.Views.Support
                 {
                     PlotType = PlotType.Pseudocolor,
                     BinCount = 0,
-                    XFeature = "x",
-                    YFeature = "y",
+                    XFeature = 0,
+                    YFeature = 0,
                     XAxisScaleType = AxisScaleType.Linear,
                     YAxisScaleType = AxisScaleType.Linear
                 },
@@ -94,8 +97,8 @@ namespace Worksheet.Views.Support
                 {
                     PlotType = PlotType.SpectralRibbon,
                     BinCount = 0,
-                    XFeature = "sample",
-                    YFeature = "intensity",
+                    XFeature = 0,
+                    YFeature = 0,
                     XAxisScaleType = AxisScaleType.Linear,
                     YAxisScaleType = AxisScaleType.Linear
                 },

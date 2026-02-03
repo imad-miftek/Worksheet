@@ -1,6 +1,7 @@
 using System.Windows.Controls;
 using System.Windows;
 using Worksheet.Models;
+using Worksheet.Services;
 using Worksheet.Views.PlotViews;
 using Worksheet.Views.PlotViews.Dialogs;
 
@@ -8,6 +9,13 @@ namespace Worksheet.Views.PlotViews.ContextMenus
 {
     public class HistogramPlotContextMenu : PlotContextMenu
     {
+        private readonly FeatureSelectionStrategy _featureSelectionStrategy;
+
+        public HistogramPlotContextMenu(FeatureSelectionStrategy featureSelectionStrategy)
+        {
+            _featureSelectionStrategy = featureSelectionStrategy;
+        }
+
         public override void Attach(PlotItem plotItem, PlotView plotView)
         {
             if (plotView is not HistogramPlotView histogramView)
@@ -33,10 +41,11 @@ namespace Worksheet.Views.PlotViews.ContextMenus
             plotItem.PlotContainer.DragLayer.ContextMenu = contextMenu;
         }
 
-        private static void OpenProperties(PlotItem plotItem, HistogramPlotView histogramView)
+        private void OpenProperties(PlotItem plotItem, HistogramPlotView histogramView)
         {
             var owner = Window.GetWindow(plotItem.Container);
-            var dialog = new HistogramPropertiesDialog(histogramView.CurrentAxisScale)
+            var channelNames = _featureSelectionStrategy.GetXFeatureNames(PlotType.Histogram);
+            var dialog = new HistogramPropertiesDialog(histogramView.CurrentAxisScale, channelNames, histogramView.Settings.XFeature)
             {
                 Owner = owner
             };
@@ -44,6 +53,7 @@ namespace Worksheet.Views.PlotViews.ContextMenus
             if (dialog.ShowDialog() == true)
             {
                 histogramView.UpdateAxisScale(plotItem, dialog.SelectedAxisScale);
+                histogramView.Settings.XFeature = dialog.SelectedChannelIndex;
             }
         }
     }

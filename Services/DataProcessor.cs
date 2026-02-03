@@ -7,10 +7,14 @@ namespace Worksheet.Services
     public class DataProcessor
     {
         private readonly DataSource _dataSource;
+        private readonly double[][] _spectralChannels;
+        private readonly double[,] _heatmapData;
 
         public DataProcessor(DataSource dataSource)
         {
             _dataSource = dataSource;
+            _spectralChannels = BuildSpectralChannels(60, 240);
+            _heatmapData = BuildHeatmapData(60, 60);
         }
 
         public ProcessedPlotData Process(PlotSettings settings)
@@ -26,7 +30,7 @@ namespace Worksheet.Services
 
         private ProcessedPlotData ProcessHistogram(PlotSettings settings)
         {
-            var values = _dataSource.GetHistogramValues(settings.XFeature);
+            var values = _dataSource.Get(settings.XFeature);
             int binCount = settings.GetBinCount();
 
             var counts = new double[binCount];
@@ -52,14 +56,53 @@ namespace Worksheet.Services
 
         private ProcessedPlotData ProcessHeatmap(PlotSettings settings)
         {
-            var data = _dataSource.GetHeatmapData(settings.XFeature, settings.YFeature);
-            return new HeatmapProcessedData(settings.Id, data);
+            return new HeatmapProcessedData(settings.Id, _heatmapData);
         }
 
         private ProcessedPlotData ProcessSpectralRibbon(PlotSettings settings)
         {
-            var channels = _dataSource.GetSpectralChannels(settings.YFeature);
-            return new SpectralRibbonProcessedData(settings.Id, channels);
+            return new SpectralRibbonProcessedData(settings.Id, _spectralChannels);
+        }
+
+        private static double[][] BuildSpectralChannels(int channelCount, int pointCount)
+        {
+            var random = new Random(4);
+            var channels = new double[channelCount][];
+
+            for (int i = 0; i < channelCount; i++)
+            {
+                double baseFreq = 0.015 + i * 0.0015;
+                double phase = i * 0.2;
+                double amplitude = 0.8 + (i % 5) * 0.12;
+
+                var values = new double[pointCount];
+                for (int j = 0; j < pointCount; j++)
+                {
+                    double x = j;
+                    double noise = (random.NextDouble() - 0.5) * 0.2;
+                    values[j] = amplitude * Math.Sin(baseFreq * x + phase) + noise + i * 0.015;
+                }
+
+                channels[i] = values;
+            }
+
+            return channels;
+        }
+
+        private static double[,] BuildHeatmapData(int width, int height)
+        {
+            var data = new double[width, height];
+            for (int x = 0; x < width; x++)
+            {
+                for (int y = 0; y < height; y++)
+                {
+                    double v1 = Math.Sin(x * 0.12) * Math.Cos(y * 0.18);
+                    double v2 = Math.Sin((x + y) * 0.07);
+                    data[x, y] = v1 + v2;
+                }
+            }
+
+            return data;
         }
     }
 }
