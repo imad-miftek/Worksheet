@@ -19,20 +19,19 @@ namespace Worksheet.Views.Support
         private readonly FeatureSelectionStrategy _featureSelectionStrategy;
 
         public PlotFactory()
-            : this(new AxisFactory(), new FeatureSelectionStrategy(), new PseudocolorPlotContextMenu(), new SpectralRibbonPlotContextMenu())
+            : this(new AxisFactory(), new FeatureSelectionStrategy(), new SpectralRibbonPlotContextMenu())
         {
         }
 
         public PlotFactory(
             AxisFactory axisFactory,
             FeatureSelectionStrategy featureSelectionStrategy,
-            PseudocolorPlotContextMenu pseudocolorContextMenu,
             SpectralRibbonPlotContextMenu spectralRibbonContextMenu)
         {
             _axisFactory = axisFactory;
             _featureSelectionStrategy = featureSelectionStrategy;
             _histogramContextMenu = new HistogramPlotContextMenu(_featureSelectionStrategy);
-            _pseudocolorContextMenu = pseudocolorContextMenu;
+            _pseudocolorContextMenu = new PseudocolorPlotContextMenu(_featureSelectionStrategy);
             _spectralRibbonContextMenu = spectralRibbonContextMenu;
         }
 

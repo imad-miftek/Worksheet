@@ -56,7 +56,65 @@ namespace Worksheet.Services
 
         private ProcessedPlotData ProcessHeatmap(PlotSettings settings)
         {
-            return new HeatmapProcessedData(settings.Id, _heatmapData);
+            var xValues = _dataSource.Get(settings.XFeature);
+            var yValues = _dataSource.Get(settings.YFeature);
+
+            int count = Math.Min(xValues.Length, yValues.Length);
+            int bins = settings.GetBinCount();
+            var counts = new double[bins, bins];
+
+            for (int i = 0; i < count; i++)
+            {
+                double xPos = settings.DataValueToBinPosition(xValues[i], settings.XAxisScaleType);
+                double yPos = settings.DataValueToBinPosition(yValues[i], settings.YAxisScaleType);
+
+                int xBin = (int)Math.Floor(xPos);
+                int yBin = (int)Math.Floor(yPos);
+
+                if (xBin < 0)
+                    xBin = 0;
+                else if (xBin >= bins)
+                    xBin = bins - 1;
+
+                if (yBin < 0)
+                    yBin = 0;
+                else if (yBin >= bins)
+                    yBin = bins - 1;
+
+                counts[xBin, yBin]++;
+            }
+
+            double max = 0;
+            for (int x = 0; x < bins; x++)
+            {
+                for (int y = 0; y < bins; y++)
+                {
+                    if (counts[x, y] > max)
+                        max = counts[x, y];
+                }
+            }
+
+            if (max > 0)
+            {
+                for (int x = 0; x < bins; x++)
+                {
+                    for (int y = 0; y < bins; y++)
+                    {
+                        double value = counts[x, y] / max;
+                        counts[x, y] = value == 0 ? double.NaN : value;
+                    }
+                }
+            }
+            else
+            {
+                for (int x = 0; x < bins; x++)
+                {
+                    for (int y = 0; y < bins; y++)
+                        counts[x, y] = double.NaN;
+                }
+            }
+
+            return new HeatmapProcessedData(settings.Id, counts);
         }
 
         private ProcessedPlotData ProcessSpectralRibbon(PlotSettings settings)

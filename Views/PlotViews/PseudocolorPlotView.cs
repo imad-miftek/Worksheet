@@ -27,8 +27,23 @@ namespace Worksheet.Views.PlotViews
             {
                 plot.Plot.Clear();
                 var heatmap = plot.Plot.Add.Heatmap(heatmapData.Data);
-                heatmap.Colormap = new ScottPlot.Colormaps.Viridis();
+                heatmap.Extent = new ScottPlot.CoordinateRect(0, Settings.GetBinCount(), 0, Settings.GetBinCount());
+                plot.Plot.Axes.SetLimitsX(0, Settings.GetBinCount());
+                plot.Plot.Axes.SetLimitsY(0, Settings.GetBinCount());
+                heatmap.Colormap = CreateColormap();
             });
+        }
+
+        private static ScottPlot.IColormap CreateColormap()
+        {
+            try
+            {
+                return new ScottPlot.Colormaps.Turbo();
+            }
+            catch
+            {
+                return new ScottPlot.Colormaps.Viridis();
+            }
         }
     }
 }

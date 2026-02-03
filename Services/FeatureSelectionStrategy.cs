@@ -26,14 +26,21 @@ namespace Worksheet.Services
 
         public IReadOnlyList<string> GetXFeatureNames(PlotType plotType)
         {
-            return plotType == PlotType.Histogram
+            return plotType == PlotType.Histogram || plotType == PlotType.Pseudocolor
+                ? HistogramChannelNames
+                : Array.Empty<string>();
+        }
+
+        public IReadOnlyList<string> GetYFeatureNames(PlotType plotType)
+        {
+            return plotType == PlotType.Pseudocolor
                 ? HistogramChannelNames
                 : Array.Empty<string>();
         }
 
         public IReadOnlyList<int> GetXFeatureIndices(PlotType plotType)
         {
-            return plotType == PlotType.Histogram
+            return plotType == PlotType.Histogram || plotType == PlotType.Pseudocolor
                 ? Enumerable.Range(0, HistogramChannelNames.Length).ToArray()
                 : Array.Empty<int>();
         }

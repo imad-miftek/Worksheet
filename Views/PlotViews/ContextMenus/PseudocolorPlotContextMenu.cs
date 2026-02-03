@@ -1,12 +1,65 @@
 using Worksheet.Models;
+using Worksheet.Services;
 using Worksheet.Views.PlotViews;
+using Worksheet.Views.PlotViews.Dialogs;
 
 namespace Worksheet.Views.PlotViews.ContextMenus
 {
     public class PseudocolorPlotContextMenu : PlotContextMenu
     {
+        private readonly FeatureSelectionStrategy _featureSelectionStrategy;
+
+        public PseudocolorPlotContextMenu(FeatureSelectionStrategy featureSelectionStrategy)
+        {
+            _featureSelectionStrategy = featureSelectionStrategy;
+        }
+
         public override void Attach(PlotItem plotItem, PlotView plotView)
         {
+            if (plotView is not PseudocolorPlotView pseudocolorView)
+                return;
+
+            var contextMenu = new System.Windows.Controls.ContextMenu();
+
+            var propertiesItem = new System.Windows.Controls.MenuItem
+            {
+                Header = "Properties"
+            };
+            propertiesItem.Click += (s, e) => OpenProperties(plotItem, pseudocolorView);
+
+            var closeItem = new System.Windows.Controls.MenuItem
+            {
+                Header = "Close"
+            };
+            closeItem.Click += (s, e) => plotItem.OnCloseRequested?.Invoke(plotItem);
+
+            contextMenu.Items.Add(propertiesItem);
+            contextMenu.Items.Add(closeItem);
+
+            plotItem.PlotContainer.DragLayer.ContextMenu = contextMenu;
+        }
+
+        private void OpenProperties(PlotItem plotItem, PseudocolorPlotView pseudocolorView)
+        {
+            var owner = System.Windows.Window.GetWindow(plotItem.Container);
+            var featureNames = _featureSelectionStrategy.GetXFeatureNames(PlotType.Pseudocolor);
+            var dialog = new PseudocolorPropertiesDialog(
+                pseudocolorView.Settings.XAxisScaleType,
+                pseudocolorView.Settings.YAxisScaleType,
+                featureNames,
+                pseudocolorView.Settings.XFeature,
+                pseudocolorView.Settings.YFeature)
+            {
+                Owner = owner
+            };
+
+            if (dialog.ShowDialog() == true)
+            {
+                pseudocolorView.Settings.XAxisScaleType = dialog.SelectedXAxisScale;
+                pseudocolorView.Settings.YAxisScaleType = dialog.SelectedYAxisScale;
+                pseudocolorView.Settings.XFeature = dialog.SelectedXFeatureIndex;
+                pseudocolorView.Settings.YFeature = dialog.SelectedYFeatureIndex;
+            }
         }
     }
 }
