@@ -24,6 +24,8 @@ namespace Worksheet.Services
             "LiveDead Violet-A", "LiveDead Aqua-A"
         };
 
+        public static IReadOnlyList<string> ChannelNames => HistogramChannelNames;
+
         public IReadOnlyList<string> GetXFeatureNames(PlotType plotType)
         {
             return plotType == PlotType.Histogram || plotType == PlotType.Pseudocolor

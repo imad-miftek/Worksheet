@@ -95,7 +95,7 @@ namespace Worksheet.Views.Support
                 PlotType.SpectralRibbon => new PlotSettings
                 {
                     PlotType = PlotType.SpectralRibbon,
-                    BinCount = 0,
+                    BinCount = 256,
                     XFeature = 0,
                     YFeature = 0,
                     XAxisScaleType = AxisScaleType.Linear,

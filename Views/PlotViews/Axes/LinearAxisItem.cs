@@ -23,6 +23,25 @@ namespace Worksheet.Views.PlotViews.Axes
 
         private static void ApplyBottom(WpfPlot plot, PlotSettings settings)
         {
+            plot.Plot.Axes.Bottom.TickGenerator = CreateDataTickGenerator(settings);
+
+            // Configure minor grid styling
+            plot.Plot.Grid.MinorLineColor = ScottPlot.Colors.Black.WithOpacity(.05);
+            plot.Plot.Grid.MinorLineWidth = 1;
+
+            plot.Plot.Axes.SetLimitsX(0, settings.GetBinCount());
+        }
+
+        private static void ApplyLeft(WpfPlot plot)
+        {
+            plot.Plot.Axes.Left.TickGenerator = new ScottPlot.TickGenerators.NumericAutomatic()
+            {
+                LabelFormatter = (double x) => FormatSIPrefix(x)
+            };
+        }
+
+        internal static FixedLinearTickGenerator CreateDataTickGenerator(PlotSettings settings)
+        {
             var majorValues = new double[] { 0, 20_000_000, 40_000_000, 60_000_000, 80_000_000, 100_000_000 };
             var majorPositions = new double[majorValues.Length];
             var majorLabels = new string[majorValues.Length];
@@ -46,25 +65,10 @@ namespace Worksheet.Views.PlotViews.Axes
                 }
             }
 
-            var tickGen = new FixedLinearTickGenerator(majorPositions, majorLabels, minorPositions.ToArray());
-            plot.Plot.Axes.Bottom.TickGenerator = tickGen;
-
-            // Configure minor grid styling
-            plot.Plot.Grid.MinorLineColor = ScottPlot.Colors.Black.WithOpacity(.05);
-            plot.Plot.Grid.MinorLineWidth = 1;
-
-            plot.Plot.Axes.SetLimitsX(0, settings.GetBinCount());
+            return new FixedLinearTickGenerator(majorPositions, majorLabels, minorPositions.ToArray());
         }
 
-        private static void ApplyLeft(WpfPlot plot)
-        {
-            plot.Plot.Axes.Left.TickGenerator = new ScottPlot.TickGenerators.NumericAutomatic()
-            {
-                LabelFormatter = (double x) => FormatSIPrefix(x)
-            };
-        }
-
-        private static string FormatSIPrefix(double value)
+        internal static string FormatSIPrefix(double value)
         {
             if (value == 0) return "0";
 
