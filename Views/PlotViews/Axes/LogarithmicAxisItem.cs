@@ -22,6 +22,24 @@ namespace Worksheet.Views.PlotViews.Axes
 
         private static void ApplyBottom(WpfPlot plot, PlotSettings settings)
         {
+            plot.Plot.Axes.Bottom.TickGenerator = CreateDataTickGenerator(settings);
+            plot.Plot.Grid.MajorLineColor = ScottPlot.Colors.Black.WithOpacity(.15);
+            plot.Plot.Grid.MinorLineColor = ScottPlot.Colors.Black.WithOpacity(.05);
+            plot.Plot.Grid.MinorLineWidth = 1;
+
+            plot.Plot.Axes.SetLimitsX(0, settings.GetBinCount());
+        }
+
+        private static void ApplyLeft(WpfPlot plot)
+        {
+            plot.Plot.Axes.Left.TickGenerator = new ScottPlot.TickGenerators.NumericAutomatic()
+            {
+                LabelFormatter = (double x) => FormatSIPrefix(x)
+            };
+        }
+
+        internal static FixedLogTickGenerator CreateDataTickGenerator(PlotSettings settings)
+        {
             var positions = new double[9];
             var labels = new string[9];
 
@@ -43,23 +61,10 @@ namespace Worksheet.Views.PlotViews.Axes
                 }
             }
 
-            plot.Plot.Axes.Bottom.TickGenerator = new FixedLogTickGenerator(positions, labels, minorPositions.ToArray());
-            plot.Plot.Grid.MajorLineColor = ScottPlot.Colors.Black.WithOpacity(.15);
-            plot.Plot.Grid.MinorLineColor = ScottPlot.Colors.Black.WithOpacity(.05);
-            plot.Plot.Grid.MinorLineWidth = 1;
-
-            plot.Plot.Axes.SetLimitsX(0, settings.GetBinCount());
+            return new FixedLogTickGenerator(positions, labels, minorPositions.ToArray());
         }
 
-        private static void ApplyLeft(WpfPlot plot)
-        {
-            plot.Plot.Axes.Left.TickGenerator = new ScottPlot.TickGenerators.NumericAutomatic()
-            {
-                LabelFormatter = (double x) => FormatSIPrefix(x)
-            };
-        }
-
-        private static string FormatLogLabel(int exponent)
+        internal static string FormatLogLabel(int exponent)
         {
             string[] superscripts = { "⁰", "¹", "²", "³", "⁴", "⁵", "⁶", "⁷", "⁸", "⁹" };
 
@@ -80,7 +85,7 @@ namespace Worksheet.Views.PlotViews.Axes
             return result;
         }
 
-        private static string FormatSIPrefix(double value)
+        internal static string FormatSIPrefix(double value)
         {
             if (value == 0) return "0";
 

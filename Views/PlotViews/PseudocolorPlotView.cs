@@ -1,6 +1,7 @@
 using ScottPlot.WPF;
 using Worksheet.Models;
 using Worksheet.Models.Data;
+using Worksheet.Views.PlotViews.Axes;
 using Worksheet.Views.PlotViews.ContextMenus;
 
 namespace Worksheet.Views.PlotViews
@@ -31,7 +32,66 @@ namespace Worksheet.Views.PlotViews
                 plot.Plot.Axes.SetLimitsX(0, Settings.GetBinCount());
                 plot.Plot.Axes.SetLimitsY(0, Settings.GetBinCount());
                 heatmap.Colormap = CreateColormap();
+                ApplyAxisTicks(plot);
             });
+        }
+
+        private void ApplyAxisTicks(WpfPlot plot)
+        {
+            ApplyAxisTicks(plot, AxisOrientation.Bottom, Settings.XAxisScaleType, Settings);
+            ApplyAxisTicks(plot, AxisOrientation.Left, Settings.YAxisScaleType, Settings);
+        }
+
+        private static void ApplyAxisTicks(WpfPlot plot, AxisOrientation orientation, AxisScaleType scaleType, PlotSettings settings)
+        {
+            switch (scaleType)
+            {
+                case AxisScaleType.Linear:
+                    ApplyLinearTicks(plot, orientation, settings);
+                    break;
+                case AxisScaleType.Logarithmic:
+                    ApplyLogarithmicTicks(plot, orientation, settings);
+                    break;
+                default:
+                    break;
+            }
+        }
+
+        private static void ApplyLinearTicks(WpfPlot plot, AxisOrientation orientation, PlotSettings settings)
+        {
+            var tickGen = LinearAxisItem.CreateDataTickGenerator(settings);
+            if (orientation == AxisOrientation.Bottom)
+            {
+                plot.Plot.Axes.Bottom.TickGenerator = tickGen;
+                plot.Plot.Axes.SetLimitsX(0, settings.GetBinCount());
+            }
+            else if (orientation == AxisOrientation.Left)
+            {
+                plot.Plot.Axes.Left.TickGenerator = tickGen;
+                plot.Plot.Axes.SetLimitsY(0, settings.GetBinCount());
+            }
+
+            plot.Plot.Grid.MinorLineColor = ScottPlot.Colors.Black.WithOpacity(.05);
+            plot.Plot.Grid.MinorLineWidth = 1;
+        }
+
+        private static void ApplyLogarithmicTicks(WpfPlot plot, AxisOrientation orientation, PlotSettings settings)
+        {
+            var tickGen = LogarithmicAxisItem.CreateDataTickGenerator(settings);
+            if (orientation == AxisOrientation.Bottom)
+            {
+                plot.Plot.Axes.Bottom.TickGenerator = tickGen;
+                plot.Plot.Axes.SetLimitsX(0, settings.GetBinCount());
+            }
+            else if (orientation == AxisOrientation.Left)
+            {
+                plot.Plot.Axes.Left.TickGenerator = tickGen;
+                plot.Plot.Axes.SetLimitsY(0, settings.GetBinCount());
+            }
+
+            plot.Plot.Grid.MajorLineColor = ScottPlot.Colors.Black.WithOpacity(.15);
+            plot.Plot.Grid.MinorLineColor = ScottPlot.Colors.Black.WithOpacity(.05);
+            plot.Plot.Grid.MinorLineWidth = 1;
         }
 
         private static ScottPlot.IColormap CreateColormap()
