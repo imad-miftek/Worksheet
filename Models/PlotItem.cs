@@ -18,6 +18,9 @@ namespace Worksheet.Models
         public WpfPlot Plot { get; }
         public PlotContainer PlotContainer { get; }
 
+        public PlotType? PlotType { get; set; }
+        public AxisScaleType? CurrentAxisScale { get; set; }
+
         private readonly Thumb[] _thumbs;
 
         public PlotItem(WpfPlot plot, PlotContainer container, Thumb[] thumbs)

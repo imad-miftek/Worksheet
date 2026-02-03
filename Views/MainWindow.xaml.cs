@@ -1,4 +1,5 @@
 ﻿using System.Windows;
+using Worksheet.Models;
 
 namespace Worksheet.Views
 {
@@ -10,12 +11,24 @@ namespace Worksheet.Views
         public MainWindow()
         {
             InitializeComponent();
-            ToolbarControl.PlotButtonClicked += Toolbar_PlotButtonClicked;
+            ToolbarControl.HistogramPlotButtonClicked += Toolbar_HistogramPlotButtonClicked;
+            ToolbarControl.PseudocolorPlotButtonClicked += Toolbar_PseudocolorPlotButtonClicked;
+            ToolbarControl.SpectralRibbonPlotButtonClicked += Toolbar_SpectralRibbonPlotButtonClicked;
         }
 
-        private void Toolbar_PlotButtonClicked(object? sender, System.EventArgs e)
+        private void Toolbar_HistogramPlotButtonClicked(object? sender, System.EventArgs e)
         {
-            WorksheetGridControl.AddPlot();
+            WorksheetGridControl.AddPlot(PlotType.Histogram, AxisScaleType.Linear);
+        }
+
+        private void Toolbar_PseudocolorPlotButtonClicked(object? sender, System.EventArgs e)
+        {
+            WorksheetGridControl.AddPlot(PlotType.Pseudocolor);
+        }
+
+        private void Toolbar_SpectralRibbonPlotButtonClicked(object? sender, System.EventArgs e)
+        {
+            WorksheetGridControl.AddPlot(PlotType.SpectralRibbon);
         }
     }
 }

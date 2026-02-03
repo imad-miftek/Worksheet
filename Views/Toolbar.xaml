@@ -7,6 +7,10 @@
              mc:Ignorable="d" >
     <Grid Background="LightBlue">
         <!-- Add navigation items here as needed -->
-        <Button Content="Plot" Margin="5" HorizontalAlignment="Left" VerticalAlignment="Center" Click="Button_Click" />
+        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Left">
+            <Button Content="Histogram Plot" Margin="5" Click="HistogramPlotButton_Click" />
+            <Button Content="Pseudocolor Plot" Margin="5" Click="PseudocolorPlotButton_Click" />
+            <Button Content="Spectral Ribbon Plot" Margin="5" Click="SpectralRibbonPlotButton_Click" />
+        </StackPanel>
     </Grid>
 </UserControl>

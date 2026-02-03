@@ -20,16 +20,28 @@ namespace Worksheet.Views
     /// </summary>
     public partial class Toolbar : UserControl
     {
-        public event EventHandler? PlotButtonClicked;
+        public event EventHandler? HistogramPlotButtonClicked;
+        public event EventHandler? PseudocolorPlotButtonClicked;
+        public event EventHandler? SpectralRibbonPlotButtonClicked;
 
         public Toolbar()
         {
             InitializeComponent();
         }
 
-        private void Button_Click(object sender, RoutedEventArgs e)
+        private void HistogramPlotButton_Click(object sender, RoutedEventArgs e)
         {
-            PlotButtonClicked?.Invoke(this, EventArgs.Empty);
+            HistogramPlotButtonClicked?.Invoke(this, EventArgs.Empty);
+        }
+
+        private void PseudocolorPlotButton_Click(object sender, RoutedEventArgs e)
+        {
+            PseudocolorPlotButtonClicked?.Invoke(this, EventArgs.Empty);
+        }
+
+        private void SpectralRibbonPlotButton_Click(object sender, RoutedEventArgs e)
+        {
+            SpectralRibbonPlotButtonClicked?.Invoke(this, EventArgs.Empty);
         }
     }
 }
