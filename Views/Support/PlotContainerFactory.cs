@@ -5,7 +5,7 @@ using System.Windows.Media;
 using ScottPlot.WPF;
 using Worksheet.Models;
 
-namespace Worksheet.Services
+namespace Worksheet.Views.Support
 {
     public class PlotContainerFactory
     {

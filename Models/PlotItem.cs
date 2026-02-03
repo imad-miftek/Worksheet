@@ -3,7 +3,6 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using ScottPlot.WPF;
-using Worksheet.Interfaces;
 using Worksheet.Views.PlotViews;
 
 namespace Worksheet.Models

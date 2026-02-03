@@ -1,8 +1,9 @@
 using System;
-using Worksheet.Models;
 
-namespace Worksheet.Views.PlotViews.Histogram
+namespace Worksheet.Models.Data
 {
+    using Worksheet.Models;
+
     public class HistogramBinning
     {
         public int BinCount { get; }

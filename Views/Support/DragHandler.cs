@@ -1,9 +1,9 @@
 using System;
 using System.Windows.Controls;
 using System.Windows.Input;
-using Worksheet.Interfaces;
+using Worksheet.Models;
 
-namespace Worksheet.Services
+namespace Worksheet.Views.Support
 {
     public class DragHandler
     {

@@ -4,7 +4,7 @@ using System.Windows.Media;
 using Worksheet.Models;
 using Worksheet.Services;
 using Worksheet.Views.PlotViews;
-using Worksheet.Interfaces;
+using Worksheet.Views.Support;
 
 namespace Worksheet.Views
 {
@@ -15,6 +15,7 @@ namespace Worksheet.Views
         private readonly PlotContainerFactory _containerFactory;
         private readonly ThumbManager _thumbManager;
         private readonly DragHandler _dragHandler;
+        private readonly ViewportSession _viewportSession;
 
         private double _snapSize = 0;
 
@@ -36,7 +37,8 @@ namespace Worksheet.Views
             new PlotFactory(),
             new PlotContainerFactory(),
             new ThumbManager(),
-            new DragHandler())
+            new DragHandler(),
+            null)
         {
         }
 
@@ -45,13 +47,16 @@ namespace Worksheet.Views
             PlotFactory plotFactory,
             PlotContainerFactory containerFactory,
             ThumbManager thumbManager,
-            DragHandler dragHandler)
+            DragHandler dragHandler,
+            ViewportSession? viewportSession)
         {
             _selectionManager = selectionManager;
             _plotFactory = plotFactory;
             _containerFactory = containerFactory;
             _thumbManager = thumbManager;
             _dragHandler = dragHandler;
+            _viewportSession = viewportSession ?? new ViewportSession(Dispatcher, System.TimeSpan.FromMilliseconds(250), System.TimeSpan.FromMilliseconds(100));
+            _viewportSession.Start();
 
             InitializeComponent();
             UpdateGridBackground();
@@ -99,12 +104,20 @@ namespace Worksheet.Views
             WorksheetGridContainer.Background = brush;
         }
 
+        public void AddPlot()
+        {
+            // Create the plot (with fixed padding that aligns with grid)
+            var plot = _plotFactory.CreatePlot(200, 200);
+
+            AddPlotToWorksheet(plot, null, null);
+        }
+
         public void AddPlot(PlotType plotType)
         {
             // Create the plot of the specified type
             var plot = _plotFactory.CreatePlot(200, 200, plotType, out var plotView);
 
-            AddPlotToWorksheet(plot, plotView);
+            AddPlotToWorksheet(plot, plotView, plotView?.Settings);
         }
 
         public void AddPlot(PlotType plotType, AxisScaleType axisScale)
@@ -112,10 +125,10 @@ namespace Worksheet.Views
             // Create the plot of the specified type with custom axis scale
             var plot = _plotFactory.CreatePlot(200, 200, plotType, axisScale, out var plotView);
 
-            AddPlotToWorksheet(plot, plotView);
+            AddPlotToWorksheet(plot, plotView, plotView?.Settings);
         }
 
-        private void AddPlotToWorksheet(ScottPlot.WPF.WpfPlot plot, PlotView? plotView)
+        private void AddPlotToWorksheet(ScottPlot.WPF.WpfPlot plot, PlotView? plotView, PlotSettings? settings)
         {
             // Create the container structure (use ActualWidth for grid layout)
             var worksheetWidth = WorksheetGridContainer.ActualWidth > 0
@@ -134,6 +147,11 @@ namespace Worksheet.Views
                 PlotView = plotView,
                 OnCloseRequested = (item) =>
                 {
+                    if (settings != null)
+                    {
+                        _viewportSession.UnregisterPlot(settings.Id);
+                    }
+
                     _selectionManager.Unregister(item);
                     WorksheetGridContainer.Children.Remove(item.Container);
                 }
@@ -148,6 +166,12 @@ namespace Worksheet.Views
 
             // Register with selection manager
             _selectionManager.Register(plotItem, plotItem.OnSelect, plotItem.OnDeselect);
+
+            if (plotView != null && settings != null)
+            {
+                _viewportSession.RegisterPlot(settings);
+                _viewportSession.RegisterRenderTarget(plot, plotView, settings);
+            }
 
             // Add to worksheet and select
             WorksheetGridContainer.Children.Add(container.Container);

@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using ScottPlot.WPF;
 using Worksheet.Models;
-using Worksheet.Views.PlotViews.Histogram;
+using Worksheet.Models.Data;
 
 namespace Worksheet.Views.PlotViews.Axes
 {

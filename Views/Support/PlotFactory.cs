@@ -7,7 +7,7 @@ using Worksheet.Views.PlotViews;
 using Worksheet.Views.PlotViews.Axes;
 using Worksheet.Views.PlotViews.ContextMenus;
 
-namespace Worksheet.Services
+namespace Worksheet.Views.Support
 {
     public class PlotFactory
     {
@@ -33,56 +33,85 @@ namespace Worksheet.Services
             _spectralRibbonContextMenu = spectralRibbonContextMenu;
         }
 
+        public WpfPlot CreatePlot(double width, double height)
+        {
+            var plot = CreateBasePlot(width, height);
+
+            // Add sample data
+            plot.Plot.Add.Scatter(
+                new double[] { 1, 2, 3, 4, 5 },
+                new double[] { 1, 4, 9, 16, 25 });
+
+            return plot;
+        }
+
         public WpfPlot CreatePlot(double width, double height, PlotType plotType, out PlotView plotView)
         {
             var plot = CreateBasePlot(width, height);
 
-            switch (plotType)
-            {
-                case PlotType.Histogram:
-                    var histogramView = new HistogramPlotView(_histogramContextMenu, _axisFactory);
-                    histogramView.Configure(plot);
-                    plotView = histogramView;
-                    return plot;
-                case PlotType.Pseudocolor:
-                    var pseudocolorView = new PseudocolorPlotView(_pseudocolorContextMenu);
-                    pseudocolorView.Configure(plot);
-                    plotView = pseudocolorView;
-                    return plot;
-                case PlotType.SpectralRibbon:
-                    var spectralRibbonView = new SpectralRibbonPlotView(_spectralRibbonContextMenu);
-                    spectralRibbonView.Configure(plot);
-                    plotView = spectralRibbonView;
-                    return plot;
-                default:
-                    throw new ArgumentOutOfRangeException(nameof(plotType), plotType, "Unsupported plot type.");
-            }
+            var settings = CreateSettings(plotType);
+            plotView = CreatePlotView(plotType, settings);
+            plotView.Configure(plot);
+
+            return plot;
         }
 
         public WpfPlot CreatePlot(double width, double height, PlotType plotType, AxisScaleType axisScale, out PlotView plotView)
         {
             var plot = CreateBasePlot(width, height);
 
-            switch (plotType)
+            var settings = CreateSettings(plotType);
+            settings.XAxisScaleType = axisScale;
+            plotView = CreatePlotView(plotType, settings);
+            plotView.Configure(plot);
+
+            return plot;
+        }
+
+        public PlotSettings CreateSettings(PlotType plotType)
+        {
+            return plotType switch
             {
-                case PlotType.Histogram:
-                    var histogramView = new HistogramPlotView(_histogramContextMenu, _axisFactory);
-                    histogramView.Configure(plot, axisScale);
-                    plotView = histogramView;
-                    return plot;
-                case PlotType.Pseudocolor:
-                    var pseudocolorView = new PseudocolorPlotView(_pseudocolorContextMenu);
-                    pseudocolorView.Configure(plot);
-                    plotView = pseudocolorView;
-                    return plot;
-                case PlotType.SpectralRibbon:
-                    var spectralRibbonView = new SpectralRibbonPlotView(_spectralRibbonContextMenu);
-                    spectralRibbonView.Configure(plot);
-                    plotView = spectralRibbonView;
-                    return plot;
-                default:
-                    throw new ArgumentOutOfRangeException(nameof(plotType), plotType, "Unsupported plot type.");
-            }
+                PlotType.Histogram => new PlotSettings
+                {
+                    PlotType = PlotType.Histogram,
+                    BinCount = 256,
+                    XFeature = "intensity",
+                    YFeature = "frequency",
+                    XAxisScaleType = AxisScaleType.Linear,
+                    YAxisScaleType = AxisScaleType.Linear
+                },
+                PlotType.Pseudocolor => new PlotSettings
+                {
+                    PlotType = PlotType.Pseudocolor,
+                    BinCount = 0,
+                    XFeature = "x",
+                    YFeature = "y",
+                    XAxisScaleType = AxisScaleType.Linear,
+                    YAxisScaleType = AxisScaleType.Linear
+                },
+                PlotType.SpectralRibbon => new PlotSettings
+                {
+                    PlotType = PlotType.SpectralRibbon,
+                    BinCount = 0,
+                    XFeature = "sample",
+                    YFeature = "intensity",
+                    XAxisScaleType = AxisScaleType.Linear,
+                    YAxisScaleType = AxisScaleType.Linear
+                },
+                _ => throw new ArgumentOutOfRangeException(nameof(plotType), plotType, "Unsupported plot type.")
+            };
+        }
+
+        public PlotView CreatePlotView(PlotType plotType, PlotSettings settings)
+        {
+            return plotType switch
+            {
+                PlotType.Histogram => new HistogramPlotView(_histogramContextMenu, _axisFactory, settings),
+                PlotType.Pseudocolor => new PseudocolorPlotView(_pseudocolorContextMenu, settings),
+                PlotType.SpectralRibbon => new SpectralRibbonPlotView(_spectralRibbonContextMenu, settings),
+                _ => throw new ArgumentOutOfRangeException(nameof(plotType), plotType, "Unsupported plot type.")
+            };
         }
 
         private static WpfPlot CreateBasePlot(double width, double height)
