@@ -1,10 +1,8 @@
 using System;
 using System.Collections.Generic;
-using Worksheet.Interfaces;
-
 namespace Worksheet.Services
 {
-    public class SelectionManager<T> : ISelectionManager<T> where T : class
+    public class SelectionManager<T> where T : class
     {
         private readonly Dictionary<T, (Action onSelect, Action onDeselect)> _items = new();
 

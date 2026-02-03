@@ -1,8 +1,10 @@
+using System;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using ScottPlot.WPF;
 using Worksheet.Interfaces;
+using Worksheet.Views.PlotViews;
 
 namespace Worksheet.Models
 {
@@ -18,8 +20,8 @@ namespace Worksheet.Models
         public WpfPlot Plot { get; }
         public PlotContainer PlotContainer { get; }
 
-        public PlotType? PlotType { get; set; }
-        public AxisScaleType? CurrentAxisScale { get; set; }
+        public PlotView? PlotView { get; set; }
+        public Action<PlotItem>? OnCloseRequested { get; set; }
 
         private readonly Thumb[] _thumbs;
 

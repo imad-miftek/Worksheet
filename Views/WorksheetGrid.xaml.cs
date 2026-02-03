@@ -1,20 +1,20 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
-using Worksheet.Interfaces;
 using Worksheet.Models;
 using Worksheet.Services;
+using Worksheet.Views.PlotViews;
+using Worksheet.Interfaces;
 
 namespace Worksheet.Views
 {
     public partial class WorksheetGrid : UserControl
     {
-        private readonly ISelectionManager<IWorksheetItem> _selectionManager;
-        private readonly IPlotFactory _plotFactory;
-        private readonly IPlotContainerFactory _containerFactory;
-        private readonly IThumbManager _thumbManager;
-        private readonly IDragHandler _dragHandler;
-        private readonly IContextMenuHandler _contextMenuHandler;
+        private readonly SelectionManager<IWorksheetItem> _selectionManager;
+        private readonly PlotFactory _plotFactory;
+        private readonly PlotContainerFactory _containerFactory;
+        private readonly ThumbManager _thumbManager;
+        private readonly DragHandler _dragHandler;
 
         private double _snapSize = 0;
 
@@ -36,25 +36,22 @@ namespace Worksheet.Views
             new PlotFactory(),
             new PlotContainerFactory(),
             new ThumbManager(),
-            new DragHandler(),
-            new ContextMenuHandler())
+            new DragHandler())
         {
         }
 
         public WorksheetGrid(
-            ISelectionManager<IWorksheetItem> selectionManager,
-            IPlotFactory plotFactory,
-            IPlotContainerFactory containerFactory,
-            IThumbManager thumbManager,
-            IDragHandler dragHandler,
-            IContextMenuHandler contextMenuHandler)
+            SelectionManager<IWorksheetItem> selectionManager,
+            PlotFactory plotFactory,
+            PlotContainerFactory containerFactory,
+            ThumbManager thumbManager,
+            DragHandler dragHandler)
         {
             _selectionManager = selectionManager;
             _plotFactory = plotFactory;
             _containerFactory = containerFactory;
             _thumbManager = thumbManager;
             _dragHandler = dragHandler;
-            _contextMenuHandler = contextMenuHandler;
 
             InitializeComponent();
             UpdateGridBackground();
@@ -102,31 +99,23 @@ namespace Worksheet.Views
             WorksheetGridContainer.Background = brush;
         }
 
-        public void AddPlot()
-        {
-            // Create the plot (with fixed padding that aligns with grid)
-            var plot = _plotFactory.CreatePlot(200, 200);
-
-            AddPlotToWorksheet(plot, null, null);
-        }
-
         public void AddPlot(PlotType plotType)
         {
             // Create the plot of the specified type
-            var plot = _plotFactory.CreatePlot(200, 200, plotType);
+            var plot = _plotFactory.CreatePlot(200, 200, plotType, out var plotView);
 
-            AddPlotToWorksheet(plot, plotType, null);
+            AddPlotToWorksheet(plot, plotView);
         }
 
         public void AddPlot(PlotType plotType, AxisScaleType axisScale)
         {
             // Create the plot of the specified type with custom axis scale
-            var plot = _plotFactory.CreatePlot(200, 200, plotType, axisScale);
+            var plot = _plotFactory.CreatePlot(200, 200, plotType, axisScale, out var plotView);
 
-            AddPlotToWorksheet(plot, plotType, axisScale);
+            AddPlotToWorksheet(plot, plotView);
         }
 
-        private void AddPlotToWorksheet(ScottPlot.WPF.WpfPlot plot, PlotType? plotType, AxisScaleType? axisScale)
+        private void AddPlotToWorksheet(ScottPlot.WPF.WpfPlot plot, PlotView? plotView)
         {
             // Create the container structure (use ActualWidth for grid layout)
             var worksheetWidth = WorksheetGridContainer.ActualWidth > 0
@@ -142,23 +131,20 @@ namespace Worksheet.Views
             // Create the worksheet item with metadata
             var plotItem = new PlotItem(plot, container, thumbs)
             {
-                PlotType = plotType,
-                CurrentAxisScale = axisScale
+                PlotView = plotView,
+                OnCloseRequested = (item) =>
+                {
+                    _selectionManager.Unregister(item);
+                    WorksheetGridContainer.Children.Remove(item.Container);
+                }
             };
 
             // Setup drag behavior with snapping
             _dragHandler.AttachDrag(container.DragLayer, plotItem,
                                     WorksheetGridContainer, _selectionManager, SnapSize);
 
-            // Attach context menu for histograms
-            _contextMenuHandler.AttachContextMenu(plotItem, (newScale) =>
-            {
-                if (plotItem.PlotType == PlotType.Histogram && plotItem.CurrentAxisScale != newScale)
-                {
-                    _plotFactory.UpdateHistogramAxisScale(plot, newScale);
-                    plotItem.CurrentAxisScale = newScale;
-                }
-            });
+            // Attach plot-specific context menu
+            plotView?.AttachContextMenu(plotItem);
 
             // Register with selection manager
             _selectionManager.Register(plotItem, plotItem.OnSelect, plotItem.OnDeselect);

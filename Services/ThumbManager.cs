@@ -5,12 +5,11 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using ScottPlot.WPF;
-using Worksheet.Interfaces;
 using Worksheet.Models;
 
 namespace Worksheet.Services
 {
-    public class ThumbManager : IThumbManager
+    public class ThumbManager
     {
         private const double MinSize = 50;
 

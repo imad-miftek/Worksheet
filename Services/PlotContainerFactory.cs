@@ -3,12 +3,11 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using ScottPlot.WPF;
-using Worksheet.Interfaces;
 using Worksheet.Models;
 
 namespace Worksheet.Services
 {
-    public class PlotContainerFactory : IPlotContainerFactory
+    public class PlotContainerFactory
     {
         private const double Margin = 10;
 

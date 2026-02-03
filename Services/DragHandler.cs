@@ -5,10 +5,10 @@ using Worksheet.Interfaces;
 
 namespace Worksheet.Services
 {
-    public class DragHandler : IDragHandler
+    public class DragHandler
     {
         public void AttachDrag(Border dragLayer, IWorksheetItem item, Canvas worksheet,
-                               ISelectionManager<IWorksheetItem> selectionManager, double snapSize = 0)
+                               SelectionManager<IWorksheetItem> selectionManager, double snapSize = 0)
         {
             double dragOffsetX = 0, dragOffsetY = 0;
 
@@ -21,6 +21,12 @@ namespace Worksheet.Services
                 dragOffsetY = e.GetPosition(worksheet).Y - Canvas.GetTop(item.Container);
                 dragLayer.CaptureMouse();
                 e.Handled = true;
+            };
+
+            dragLayer.MouseRightButtonDown += (s, e) =>
+            {
+                // Right-click should also select the item before showing context menu
+                selectionManager.Select(item);
             };
 
             dragLayer.MouseMove += (s, e) =>
