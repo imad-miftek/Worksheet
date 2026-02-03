@@ -3,12 +3,15 @@ using ScottPlot.WPF;
 using Worksheet.Models;
 using Worksheet.Views.PlotViews.Axes;
 using Worksheet.Views.PlotViews.ContextMenus;
+using Worksheet.Views.PlotViews.Histogram;
 
 namespace Worksheet.Views.PlotViews
 {
     public class HistogramPlotView : PlotView
     {
+        private const int BinCount = 256;
         private readonly AxisFactory _axisFactory;
+        private double[] _values = Array.Empty<double>();
 
         public HistogramPlotView(HistogramPlotContextMenu contextMenu, AxisFactory axisFactory)
             : base(contextMenu)
@@ -49,27 +52,8 @@ namespace Worksheet.Views.PlotViews
                     values[i + 1] = mean + stdDev * z1;
             }
 
-            // Create histogram with exactly 256 bins
-            var hist = ScottPlot.Statistics.Histogram.WithBinCount(256, values);
-
-            // Display the histogram as a bar plot
-            var barPlot = plot.Plot.Add.Bars(hist.Bins, hist.Counts);
-
-            // Customize the style of each bar (filled, no borders)
-            foreach (var bar in barPlot.Bars)
-            {
-                bar.Size = hist.FirstBinSize;
-                bar.LineWidth = 0;
-                bar.FillStyle.AntiAlias = false;
-                bar.FillColor = ScottPlot.Color.FromHex("#4CAF50");
-            }
-
-            // Customize plot style
-            plot.Plot.Axes.Margins(bottom: 0);
-            plot.Plot.YLabel("Frequency");
-            plot.Plot.XLabel("Intensity");
-
-            ApplyAxisScale(plot, axisScale);
+            _values = values;
+            Render(plot, axisScale);
         }
 
         public void UpdateAxisScale(PlotItem plotItem, AxisScaleType newScale)
@@ -83,16 +67,33 @@ namespace Worksheet.Views.PlotViews
         public void UpdateAxisScale(WpfPlot plot, AxisScaleType newScale)
         {
             CurrentAxisScale = newScale;
-            ApplyAxisScale(plot, newScale);
+            Render(plot, newScale);
             plot.Refresh();
         }
 
-        private void ApplyAxisScale(WpfPlot plot, AxisScaleType axisScale)
+        private void Render(WpfPlot plot, AxisScaleType axisScale)
         {
-            _axisFactory.Apply(axisScale, plot);
+            var binning = new HistogramBinning(BinCount, axisScale);
+            var counts = binning.CreateCounts(_values);
+            var positions = binning.CreateBinPositions();
 
-            // Y-axis limits are set automatically based on data
-            // Both X and Y axis limits will remain fixed and won't auto-scale on resize
+            plot.Plot.Clear();
+
+            var barPlot = plot.Plot.Add.Bars(positions, counts);
+
+            foreach (var bar in barPlot.Bars)
+            {
+                bar.Size = 1;
+                bar.LineWidth = 0;
+                bar.FillStyle.AntiAlias = false;
+                bar.FillColor = ScottPlot.Color.FromHex("#4CAF50");
+            }
+
+            plot.Plot.Axes.Margins(bottom: 0);
+            plot.Plot.YLabel("Frequency");
+            plot.Plot.XLabel("Intensity");
+
+            _axisFactory.Apply(axisScale, plot, binning);
         }
     }
 }

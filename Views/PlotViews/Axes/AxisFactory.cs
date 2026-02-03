@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using ScottPlot.WPF;
 using Worksheet.Models;
+using Worksheet.Views.PlotViews.Histogram;
 
 namespace Worksheet.Views.PlotViews.Axes
 {
@@ -30,9 +32,11 @@ namespace Worksheet.Views.PlotViews.Axes
             throw new ArgumentOutOfRangeException(nameof(scaleType), scaleType, "Unsupported axis scale type.");
         }
 
-        public void Apply(AxisScaleType scaleType, ScottPlot.WPF.WpfPlot plot)
+        public void Apply(AxisScaleType scaleType, WpfPlot plot, HistogramBinning binning)
         {
-            Get(scaleType).Apply(plot);
+            var item = Get(scaleType);
+            item.Apply(plot, binning, AxisOrientation.Bottom);
+            item.Apply(plot, binning, AxisOrientation.Left);
         }
     }
 }

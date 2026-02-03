@@ -110,6 +110,9 @@ namespace Worksheet.Services
 
             // Show the data-area border so thumbs visually "sit" on it
             plot.Plot.DataBorder.Width = 1;
+            plot.Plot.Axes.AntiAlias(true);
+            plot.Plot.Axes.Hairline(true);
+            plot.Plot.Axes.Right.MinimumSize = 20;
 
             return plot;
         }
