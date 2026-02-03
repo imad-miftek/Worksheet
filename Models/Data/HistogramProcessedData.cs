@@ -6,16 +6,18 @@ namespace Worksheet.Models.Data
 
     public class HistogramProcessedData : ProcessedPlotData
     {
-        public HistogramProcessedData(Guid plotId, double[] positions, double[] counts, HistogramBinning binning)
+        public HistogramProcessedData(Guid plotId, double[] positions, double[] counts, int binCount, AxisScaleType scaleType)
             : base(plotId, PlotType.Histogram)
         {
             Positions = positions;
             Counts = counts;
-            Binning = binning;
+            BinCount = binCount;
+            ScaleType = scaleType;
         }
 
         public double[] Positions { get; }
         public double[] Counts { get; }
-        public HistogramBinning Binning { get; }
+        public int BinCount { get; }
+        public AxisScaleType ScaleType { get; }
     }
 }

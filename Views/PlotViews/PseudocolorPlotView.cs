@@ -23,10 +23,12 @@ namespace Worksheet.Views.PlotViews
             if (data is not HeatmapProcessedData heatmapData)
                 return;
 
-            plot.Plot.Clear();
-            var heatmap = plot.Plot.Add.Heatmap(heatmapData.Data);
-            heatmap.Colormap = new ScottPlot.Colormaps.Viridis();
-            plot.Refresh();
+            RenderOnce(plot, () =>
+            {
+                plot.Plot.Clear();
+                var heatmap = plot.Plot.Add.Heatmap(heatmapData.Data);
+                heatmap.Colormap = new ScottPlot.Colormaps.Viridis();
+            });
         }
     }
 }

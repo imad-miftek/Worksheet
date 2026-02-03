@@ -27,12 +27,27 @@ namespace Worksheet.Services
         private ProcessedPlotData ProcessHistogram(PlotSettings settings)
         {
             var values = _dataSource.GetHistogramValues(settings.XFeature);
-            int binCount = settings.BinCount > 0 ? settings.BinCount : 256;
-            var binning = new HistogramBinning(binCount, settings.XAxisScaleType);
-            var counts = binning.CreateCounts(values);
-            var positions = binning.CreateBinPositions();
+            int binCount = settings.GetBinCount();
 
-            return new HistogramProcessedData(settings.Id, positions, counts, binning);
+            var counts = new double[binCount];
+            foreach (var raw in values)
+            {
+                double pos = settings.DataValueToBinPosition(raw, settings.XAxisScaleType);
+                int index = (int)Math.Floor(pos);
+
+                if (index < 0)
+                    index = 0;
+                else if (index >= binCount)
+                    index = binCount - 1;
+
+                counts[index]++;
+            }
+
+            var positions = new double[binCount];
+            for (int i = 0; i < binCount; i++)
+                positions[i] = i + 0.5;
+
+            return new HistogramProcessedData(settings.Id, positions, counts, binCount, settings.XAxisScaleType);
         }
 
         private ProcessedPlotData ProcessHeatmap(PlotSettings settings)

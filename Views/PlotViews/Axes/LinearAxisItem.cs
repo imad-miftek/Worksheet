@@ -1,7 +1,7 @@
 using System;
 using ScottPlot.WPF;
 using Worksheet.Models;
-using Worksheet.Models.Data;
+using System.Collections.Generic;
 
 namespace Worksheet.Views.PlotViews.Axes
 {
@@ -9,11 +9,11 @@ namespace Worksheet.Views.PlotViews.Axes
     {
         public override AxisScaleType ScaleType => AxisScaleType.Linear;
 
-        public override void Apply(WpfPlot plot, HistogramBinning binning, AxisOrientation orientation)
+        public override void Apply(WpfPlot plot, PlotSettings settings, AxisOrientation orientation)
         {
             if (orientation == AxisOrientation.Bottom)
             {
-                ApplyBottom(plot, binning);
+                ApplyBottom(plot, settings);
             }
             else if (orientation == AxisOrientation.Left)
             {
@@ -21,7 +21,7 @@ namespace Worksheet.Views.PlotViews.Axes
             }
         }
 
-        private static void ApplyBottom(WpfPlot plot, HistogramBinning binning)
+        private static void ApplyBottom(WpfPlot plot, PlotSettings settings)
         {
             var majorValues = new double[] { 0, 20_000_000, 40_000_000, 60_000_000, 80_000_000, 100_000_000 };
             var majorPositions = new double[majorValues.Length];
@@ -29,12 +29,11 @@ namespace Worksheet.Views.PlotViews.Axes
 
             for (int i = 0; i < majorValues.Length; i++)
             {
-                majorPositions[i] = binning.DataValueToBinPosition(majorValues[i]);
+                majorPositions[i] = settings.DataValueToBinPosition(majorValues[i], AxisScaleType.Linear);
                 majorLabels[i] = FormatSIPrefix(majorValues[i]);
             }
 
-            var tickPositions = new System.Collections.Generic.List<double>(majorPositions);
-            var tickLabels = new System.Collections.Generic.List<string>(majorLabels);
+            var minorPositions = new List<double>();
 
             for (int i = 0; i < majorValues.Length - 1; i++)
             {
@@ -43,20 +42,18 @@ namespace Worksheet.Views.PlotViews.Axes
                 for (int j = 1; j <= 4; j++)
                 {
                     double minorValue = start + step * j;
-                    tickPositions.Add(binning.DataValueToBinPosition(minorValue));
-                    tickLabels.Add(string.Empty);
+                    minorPositions.Add(settings.DataValueToBinPosition(minorValue, AxisScaleType.Linear));
                 }
             }
 
-            var tickGen = new ScottPlot.TickGenerators.NumericManual(tickPositions.ToArray(), tickLabels.ToArray());
-
+            var tickGen = new FixedLinearTickGenerator(majorPositions, majorLabels, minorPositions.ToArray());
             plot.Plot.Axes.Bottom.TickGenerator = tickGen;
 
             // Configure minor grid styling
             plot.Plot.Grid.MinorLineColor = ScottPlot.Colors.Black.WithOpacity(.05);
             plot.Plot.Grid.MinorLineWidth = 1;
 
-            plot.Plot.Axes.SetLimitsX(0, binning.BinCount);
+            plot.Plot.Axes.SetLimitsX(0, settings.GetBinCount());
         }
 
         private static void ApplyLeft(WpfPlot plot)

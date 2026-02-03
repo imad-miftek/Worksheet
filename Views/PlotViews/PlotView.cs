@@ -1,3 +1,4 @@
+using System;
 using ScottPlot.WPF;
 using Worksheet.Models;
 using Worksheet.Models.Data;
@@ -22,6 +23,24 @@ namespace Worksheet.Views.PlotViews
         public void AttachContextMenu(PlotItem plotItem)
         {
             ContextMenu.Attach(plotItem, this);
+        }
+
+        protected void RenderOnce(WpfPlot plot, Action renderAction)
+        {
+            if (plot == null || renderAction == null)
+                return;
+
+            plot.Plot.RenderManager.EnableRendering = false;
+            try
+            {
+                renderAction();
+            }
+            finally
+            {
+                plot.Plot.RenderManager.EnableRendering = true;
+            }
+
+            plot.Refresh();
         }
     }
 }

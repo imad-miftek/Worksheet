@@ -1,7 +1,6 @@
 using System;
 using ScottPlot.WPF;
 using Worksheet.Models;
-using Worksheet.Models.Data;
 
 namespace Worksheet.Views.PlotViews.Axes
 {
@@ -9,11 +8,11 @@ namespace Worksheet.Views.PlotViews.Axes
     {
         public override AxisScaleType ScaleType => AxisScaleType.Logarithmic;
 
-        public override void Apply(WpfPlot plot, HistogramBinning binning, AxisOrientation orientation)
+        public override void Apply(WpfPlot plot, PlotSettings settings, AxisOrientation orientation)
         {
             if (orientation == AxisOrientation.Bottom)
             {
-                ApplyBottom(plot, binning);
+                ApplyBottom(plot, settings);
             }
             else if (orientation == AxisOrientation.Left)
             {
@@ -21,7 +20,7 @@ namespace Worksheet.Views.PlotViews.Axes
             }
         }
 
-        private static void ApplyBottom(WpfPlot plot, HistogramBinning binning)
+        private static void ApplyBottom(WpfPlot plot, PlotSettings settings)
         {
             var positions = new double[9];
             var labels = new string[9];
@@ -29,16 +28,27 @@ namespace Worksheet.Views.PlotViews.Axes
             for (int i = 0; i <= 8; i++)
             {
                 var value = Math.Pow(10, i);
-                positions[i] = binning.DataValueToBinPosition(value);
+                positions[i] = settings.DataValueToBinPosition(value, AxisScaleType.Logarithmic);
                 labels[i] = FormatLogLabel(i);
             }
 
-            plot.Plot.Axes.Bottom.TickGenerator = new ScottPlot.TickGenerators.NumericManual(positions, labels);
+            var minorPositions = new System.Collections.Generic.List<double>();
+            for (int i = 0; i < 8; i++)
+            {
+                double decadeStart = Math.Pow(10, i);
+                for (int m = 2; m <= 9; m++)
+                {
+                    double minorValue = decadeStart * m;
+                    minorPositions.Add(settings.DataValueToBinPosition(minorValue, AxisScaleType.Logarithmic));
+                }
+            }
+
+            plot.Plot.Axes.Bottom.TickGenerator = new FixedLogTickGenerator(positions, labels, minorPositions.ToArray());
             plot.Plot.Grid.MajorLineColor = ScottPlot.Colors.Black.WithOpacity(.15);
             plot.Plot.Grid.MinorLineColor = ScottPlot.Colors.Black.WithOpacity(.05);
             plot.Plot.Grid.MinorLineWidth = 1;
 
-            plot.Plot.Axes.SetLimitsX(0, binning.BinCount);
+            plot.Plot.Axes.SetLimitsX(0, settings.GetBinCount());
         }
 
         private static void ApplyLeft(WpfPlot plot)

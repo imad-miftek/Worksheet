@@ -25,18 +25,20 @@ namespace Worksheet.Views.PlotViews
             if (data is not SpectralRibbonProcessedData spectralData)
                 return;
 
-            plot.Plot.Clear();
-            var palette = new ScottPlot.Palettes.Category10();
-
-            for (int i = 0; i < spectralData.Channels.Length; i++)
+            RenderOnce(plot, () =>
             {
-                var sig = plot.Plot.Add.Signal(spectralData.Channels[i]);
-                sig.Color = palette.GetColor(i);
-            }
+                plot.Plot.Clear();
+                var palette = new ScottPlot.Palettes.Category10();
 
-            plot.Plot.Axes.Bottom.Label.Text = "Sample";
-            plot.Plot.Axes.Left.Label.Text = "Intensity";
-            plot.Refresh();
+                for (int i = 0; i < spectralData.Channels.Length; i++)
+                {
+                    var sig = plot.Plot.Add.Signal(spectralData.Channels[i]);
+                    sig.Color = palette.GetColor(i);
+                }
+
+                plot.Plot.Axes.Bottom.Label.Text = "Sample";
+                plot.Plot.Axes.Left.Label.Text = "Intensity";
+            });
         }
     }
 }

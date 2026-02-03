@@ -28,6 +28,8 @@ namespace Worksheet.Views.PlotViews
             plot.Plot.Axes.Margins(bottom: 0);
             plot.Plot.YLabel("Frequency");
             plot.Plot.XLabel("Intensity");
+            plot.Plot.Axes.SetLimitsY(0, 10);
+            _axisFactory.Apply(Settings.XAxisScaleType, plot, Settings);
         }
 
         public override void Render(WpfPlot plot, ProcessedPlotData data)
@@ -35,40 +37,48 @@ namespace Worksheet.Views.PlotViews
             if (data is not HistogramProcessedData histogram)
                 return;
 
-            plot.Plot.Clear();
+            if (histogram.ScaleType != Settings.XAxisScaleType)
+                return;
 
-            var barPlot = plot.Plot.Add.Bars(histogram.Positions, histogram.Counts);
+            if (histogram.BinCount != Settings.GetBinCount())
+                return;
 
-            foreach (var bar in barPlot.Bars)
+            RenderOnce(plot, () =>
             {
-                bar.Size = 1;
-                bar.LineWidth = 0;
-                bar.FillStyle.AntiAlias = false;
-                bar.FillColor = ScottPlot.Color.FromHex("#4CAF50");
-            }
+                plot.Plot.Clear();
 
-            plot.Plot.Axes.Margins(bottom: 0);
-            plot.Plot.YLabel("Frequency");
-            plot.Plot.XLabel("Intensity");
+                var barPlot = plot.Plot.Add.Bars(histogram.Positions, histogram.Counts);
 
-            double maxCount = 0;
-            for (int i = 0; i < histogram.Counts.Length; i++)
-            {
-                if (histogram.Counts[i] > maxCount)
-                    maxCount = histogram.Counts[i];
-            }
+                foreach (var bar in barPlot.Bars)
+                {
+                    bar.Size = 1;
+                    bar.LineWidth = 0;
+                    bar.FillStyle.AntiAlias = false;
+                    bar.FillColor = ScottPlot.Color.FromHex("#4CAF50");
+                }
 
-            if (maxCount <= 0)
-            {
-                plot.Plot.Axes.SetLimitsY(0, 10);
-            }
-            else
-            {
-                plot.Plot.Axes.AutoScaleY();
-            }
+                plot.Plot.Axes.Margins(bottom: 0);
+                plot.Plot.YLabel("Frequency");
+                plot.Plot.XLabel("Intensity");
 
-            _axisFactory.Apply(Settings.XAxisScaleType, plot, histogram.Binning);
-            plot.Refresh();
+                double maxCount = 0;
+                for (int i = 0; i < histogram.Counts.Length; i++)
+                {
+                    if (histogram.Counts[i] > maxCount)
+                        maxCount = histogram.Counts[i];
+                }
+
+                if (maxCount <= 0)
+                {
+                    plot.Plot.Axes.SetLimitsY(0, 10);
+                }
+                else
+                {
+                    plot.Plot.Axes.AutoScaleY();
+                }
+
+                _axisFactory.Apply(Settings.XAxisScaleType, plot, Settings);
+            });
         }
 
         public void UpdateAxisScale(PlotItem plotItem, AxisScaleType newScale)
