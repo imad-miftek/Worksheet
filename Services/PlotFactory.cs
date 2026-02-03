@@ -4,29 +4,45 @@ using ScottPlot.Interactivity.UserActionResponses;
 using ScottPlot.WPF;
 using Worksheet.Models;
 using Worksheet.Views.PlotViews;
+using Worksheet.Views.PlotViews.Axes;
 using Worksheet.Views.PlotViews.ContextMenus;
 
 namespace Worksheet.Services
 {
     public class PlotFactory
     {
+        private readonly AxisFactory _axisFactory;
         private readonly HistogramPlotContextMenu _histogramContextMenu;
         private readonly PseudocolorPlotContextMenu _pseudocolorContextMenu;
         private readonly SpectralRibbonPlotContextMenu _spectralRibbonContextMenu;
 
         public PlotFactory()
-            : this(new HistogramPlotContextMenu(), new PseudocolorPlotContextMenu(), new SpectralRibbonPlotContextMenu())
+            : this(new AxisFactory(), new HistogramPlotContextMenu(), new PseudocolorPlotContextMenu(), new SpectralRibbonPlotContextMenu())
         {
         }
 
         public PlotFactory(
+            AxisFactory axisFactory,
             HistogramPlotContextMenu histogramContextMenu,
             PseudocolorPlotContextMenu pseudocolorContextMenu,
             SpectralRibbonPlotContextMenu spectralRibbonContextMenu)
         {
+            _axisFactory = axisFactory;
             _histogramContextMenu = histogramContextMenu;
             _pseudocolorContextMenu = pseudocolorContextMenu;
             _spectralRibbonContextMenu = spectralRibbonContextMenu;
+        }
+
+        public WpfPlot CreatePlot(double width, double height)
+        {
+            var plot = CreateBasePlot(width, height);
+
+            // Add sample data
+            plot.Plot.Add.Scatter(
+                new double[] { 1, 2, 3, 4, 5 },
+                new double[] { 1, 4, 9, 16, 25 });
+
+            return plot;
         }
 
         public WpfPlot CreatePlot(double width, double height, PlotType plotType, out PlotView plotView)
@@ -36,7 +52,7 @@ namespace Worksheet.Services
             switch (plotType)
             {
                 case PlotType.Histogram:
-                    var histogramView = new HistogramPlotView(_histogramContextMenu);
+                    var histogramView = new HistogramPlotView(_histogramContextMenu, _axisFactory);
                     histogramView.Configure(plot);
                     plotView = histogramView;
                     return plot;
@@ -62,7 +78,7 @@ namespace Worksheet.Services
             switch (plotType)
             {
                 case PlotType.Histogram:
-                    var histogramView = new HistogramPlotView(_histogramContextMenu);
+                    var histogramView = new HistogramPlotView(_histogramContextMenu, _axisFactory);
                     histogramView.Configure(plot, axisScale);
                     plotView = histogramView;
                     return plot;
