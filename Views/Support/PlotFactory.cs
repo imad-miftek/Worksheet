@@ -138,7 +138,7 @@ namespace Worksheet.Views.Support
             plot.Plot.DataBackground.Color = ScottPlot.Color.FromHex("#FFFFFFFF");
 
             // Show the data-area border so thumbs visually "sit" on it
-            plot.Plot.DataBorder.Width = 0;
+            plot.Plot.DataBorder.Width = 2;
             plot.Plot.Axes.AntiAlias(true);
             plot.Plot.Axes.Hairline(true);
             plot.Plot.Axes.Right.MinimumSize = 20;
@@ -154,6 +154,7 @@ namespace Worksheet.Views.Support
             plot.Plot.Axes.Left.MajorTickStyle.Width = 2;
             plot.Plot.Axes.Left.MinorTickStyle.Length = 4;
             plot.Plot.Axes.Left.MinorTickStyle.Width = 1;
+            plot.Plot.Axes.Left.Label.Padding = 50;
 
             return plot;
         }
