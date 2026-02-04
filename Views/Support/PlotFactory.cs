@@ -16,13 +16,15 @@ namespace Worksheet.Views.Support
         {
             { PlotType.Histogram, (200, 150) },
             { PlotType.Pseudocolor, (200, 200) },
-            { PlotType.SpectralRibbon, (500, 150) }
+            { PlotType.SpectralRibbon, (500, 150) },
+            { PlotType.Oscilloscope, (400, 200) }
         };
 
         private readonly AxisFactory _axisFactory;
         private readonly HistogramPlotContextMenu _histogramContextMenu;
         private readonly PseudocolorPlotContextMenu _pseudocolorContextMenu;
         private readonly SpectralRibbonPlotContextMenu _spectralRibbonContextMenu;
+        private readonly OscilloscopeContextMenu _oscilloscopeContextMenu;
         private readonly FeatureSelectionStrategy _featureSelectionStrategy;
 
         public PlotFactory()
@@ -40,6 +42,7 @@ namespace Worksheet.Views.Support
             _histogramContextMenu = new HistogramPlotContextMenu(_featureSelectionStrategy);
             _pseudocolorContextMenu = new PseudocolorPlotContextMenu(_featureSelectionStrategy);
             _spectralRibbonContextMenu = spectralRibbonContextMenu;
+            _oscilloscopeContextMenu = new OscilloscopeContextMenu();
         }
 
         public WpfPlot CreatePlot(double width, double height)
@@ -126,6 +129,15 @@ namespace Worksheet.Views.Support
                     XAxisScaleType = AxisScaleType.Linear,
                     YAxisScaleType = AxisScaleType.Logarithmic
                 },
+                PlotType.Oscilloscope => new PlotSettings
+                {
+                    PlotType = PlotType.Oscilloscope,
+                    BinCount = 1750,
+                    XFeature = 0,
+                    YFeature = 0,
+                    XAxisScaleType = AxisScaleType.Linear,
+                    YAxisScaleType = AxisScaleType.Linear
+                },
                 _ => throw new ArgumentOutOfRangeException(nameof(plotType), plotType, "Unsupported plot type.")
             };
         }
@@ -137,6 +149,7 @@ namespace Worksheet.Views.Support
                 PlotType.Histogram => new HistogramPlotView(_histogramContextMenu, _axisFactory, settings),
                 PlotType.Pseudocolor => new PseudocolorPlotView(_pseudocolorContextMenu, settings),
                 PlotType.SpectralRibbon => new SpectralRibbonPlotView(_spectralRibbonContextMenu, settings),
+                PlotType.Oscilloscope => new OscilloscopePlotView(_oscilloscopeContextMenu, settings),
                 _ => throw new ArgumentOutOfRangeException(nameof(plotType), plotType, "Unsupported plot type.")
             };
         }

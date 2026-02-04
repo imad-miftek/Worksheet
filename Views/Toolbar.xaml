@@ -11,6 +11,7 @@
             <Button Content="Histogram Plot" Margin="5" Click="HistogramPlotButton_Click" />
             <Button Content="Pseudocolor Plot" Margin="5" Click="PseudocolorPlotButton_Click" />
             <Button Content="Spectral Ribbon Plot" Margin="5" Click="SpectralRibbonPlotButton_Click" />
+            <Button Content="Oscilloscope Plot" Margin="5" Click="OscilloscopePlotButton_Click" />
         </StackPanel>
     </Grid>
 </UserControl>

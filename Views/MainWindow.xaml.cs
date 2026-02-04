@@ -14,6 +14,7 @@ namespace Worksheet.Views
             ToolbarControl.HistogramPlotButtonClicked += Toolbar_HistogramPlotButtonClicked;
             ToolbarControl.PseudocolorPlotButtonClicked += Toolbar_PseudocolorPlotButtonClicked;
             ToolbarControl.SpectralRibbonPlotButtonClicked += Toolbar_SpectralRibbonPlotButtonClicked;
+            ToolbarControl.OscilloscopePlotButtonClicked += Toolbar_OscilloscopePlotButtonClicked;
         }
 
         private void Toolbar_HistogramPlotButtonClicked(object? sender, System.EventArgs e)
@@ -29,6 +30,11 @@ namespace Worksheet.Views
         private void Toolbar_SpectralRibbonPlotButtonClicked(object? sender, System.EventArgs e)
         {
             WorksheetGridControl.AddPlot(PlotType.SpectralRibbon);
+        }
+
+        private void Toolbar_OscilloscopePlotButtonClicked(object? sender, System.EventArgs e)
+        {
+            WorksheetGridControl.AddPlot(PlotType.Oscilloscope);
         }
     }
 }

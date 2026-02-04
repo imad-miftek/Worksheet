@@ -23,6 +23,7 @@ namespace Worksheet.Views
         public event EventHandler? HistogramPlotButtonClicked;
         public event EventHandler? PseudocolorPlotButtonClicked;
         public event EventHandler? SpectralRibbonPlotButtonClicked;
+        public event EventHandler? OscilloscopePlotButtonClicked;
 
         public Toolbar()
         {
@@ -42,6 +43,11 @@ namespace Worksheet.Views
         private void SpectralRibbonPlotButton_Click(object sender, RoutedEventArgs e)
         {
             SpectralRibbonPlotButtonClicked?.Invoke(this, EventArgs.Empty);
+        }
+
+        private void OscilloscopePlotButton_Click(object sender, RoutedEventArgs e)
+        {
+            OscilloscopePlotButtonClicked?.Invoke(this, EventArgs.Empty);
         }
     }
 }

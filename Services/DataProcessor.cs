@@ -8,7 +8,6 @@ namespace Worksheet.Services
     public class DataProcessor
     {
         private readonly DataSource _dataSource;
-        private readonly double[,] _heatmapData;
 
         public DataProcessor(DataSource dataSource)
         {

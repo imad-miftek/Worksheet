@@ -4,6 +4,7 @@ namespace Worksheet.Models
     {
         Histogram,
         Pseudocolor,
-        SpectralRibbon
+        SpectralRibbon,
+        Oscilloscope
     }
 }

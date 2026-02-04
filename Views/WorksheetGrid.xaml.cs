@@ -147,7 +147,7 @@ namespace Worksheet.Views
                 PlotView = plotView,
                 OnCloseRequested = (item) =>
                 {
-                    if (settings != null)
+                    if (settings != null && settings.PlotType != PlotType.Oscilloscope)
                     {
                         _viewportSession.UnregisterPlot(settings.Id);
                     }
@@ -167,7 +167,8 @@ namespace Worksheet.Views
             // Register with selection manager
             _selectionManager.Register(plotItem, plotItem.OnSelect, plotItem.OnDeselect);
 
-            if (plotView != null && settings != null)
+            // Register with ViewportSession for processing (skip oscilloscope - has its own rendering)
+            if (plotView != null && settings != null && settings.PlotType != PlotType.Oscilloscope)
             {
                 _viewportSession.RegisterPlot(settings);
                 _viewportSession.RegisterRenderTarget(plot, plotView, settings);
