@@ -13,7 +13,6 @@ namespace Worksheet.Services
         public DataProcessor(DataSource dataSource)
         {
             _dataSource = dataSource;
-            _heatmapData = BuildHeatmapData(60, 60);
         }
 
         public ProcessedPlotData Process(PlotSettings settings)
@@ -135,7 +134,7 @@ namespace Worksheet.Services
             var counts = new double[bins, channelCount];
 
             // Get the actual channel indices (filtered channels only)
-            var channelIndices = GetFilteredChannelIndices();
+            var channelIndices = FeatureSelectionStrategy.FilteredChannelIndices;
 
             for (int c = 0; c < channelCount; c++)
             {
@@ -186,40 +185,6 @@ namespace Worksheet.Services
             }
 
             return new SpectralRibbonProcessedData(settings.Id, counts, Array.Empty<string>());
-        }
-
-        private static List<int> GetFilteredChannelIndices()
-        {
-            // Get all connected channels and find numeric wavelength channels
-            var allChannelNames = FeatureSelectionStrategy.AllChannelNames;
-            var filteredChannelNames = FeatureSelectionStrategy.ChannelNames;
-            var indices = new List<int>();
-
-            for (int i = 0; i < allChannelNames.Count; i++)
-            {
-                if (filteredChannelNames.Contains(allChannelNames[i]))
-                {
-                    indices.Add(i);
-                }
-            }
-
-            return indices;
-        }
-
-        private static double[,] BuildHeatmapData(int width, int height)
-        {
-            var data = new double[width, height];
-            for (int x = 0; x < width; x++)
-            {
-                for (int y = 0; y < height; y++)
-                {
-                    double v1 = Math.Sin(x * 0.12) * Math.Cos(y * 0.18);
-                    double v2 = Math.Sin((x + y) * 0.07);
-                    data[x, y] = v1 + v2;
-                }
-            }
-
-            return data;
         }
     }
 }

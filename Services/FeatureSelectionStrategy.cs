@@ -54,6 +54,20 @@ namespace Worksheet.Services
             }
         }
 
+        public static IReadOnlyList<int> FilteredChannelIndices
+        {
+            get
+            {
+                lock (_lock)
+                {
+                    if (_channelSettings == null || _channelSettings.ChannelCount == 0)
+                        return Array.Empty<int>();
+
+                    return _channelSettings.GetAdcIndicesFiltered();
+                }
+            }
+        }
+
         public IReadOnlyList<string> GetXFeatureNames(PlotType plotType)
         {
             return plotType == PlotType.Histogram || plotType == PlotType.Pseudocolor
