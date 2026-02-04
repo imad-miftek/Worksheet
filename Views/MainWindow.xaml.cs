@@ -18,7 +18,7 @@ namespace Worksheet.Views
 
         private void Toolbar_HistogramPlotButtonClicked(object? sender, System.EventArgs e)
         {
-            WorksheetGridControl.AddPlot(PlotType.Histogram, AxisScaleType.Linear);
+            WorksheetGridControl.AddPlot(PlotType.Histogram);
         }
 
         private void Toolbar_PseudocolorPlotButtonClicked(object? sender, System.EventArgs e)
