@@ -79,6 +79,7 @@ namespace Worksheet.Views.PlotViews
             plot.Plot.Axes.Bottom.TickLabelStyle.Alignment = ScottPlot.Alignment.UpperLeft;  // Try: UpperLeft, UpperCenter, UpperRight, MiddleLeft, MiddleCenter, MiddleRight, LowerLeft, LowerCenter, LowerRight
             plot.Plot.Axes.Bottom.TickLabelStyle.OffsetX = 6;  // Try: 0, 5, 10, -5, -10
             plot.Plot.Axes.Bottom.TickLabelStyle.OffsetY = 3;  // Try: 0, 5, 10, -5, -10
+            plot.Plot.Axes.Bottom.MinimumSize = 50;
 
             // Use minor grid lines to align with ribbon edges, and hide minor tick marks
             plot.Plot.Grid.XAxisStyle.MajorLineStyle.IsVisible = false;
