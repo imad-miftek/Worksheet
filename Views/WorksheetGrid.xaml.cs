@@ -114,16 +114,16 @@ namespace Worksheet.Views
 
         public void AddPlot(PlotType plotType)
         {
-            // Create the plot of the specified type
-            var plot = _plotFactory.CreatePlot(200, 200, plotType, out var plotView);
+            // Create the plot using PlotFactory defaults
+            var plot = _plotFactory.CreatePlot(plotType, out var plotView);
 
             AddPlotToWorksheet(plot, plotView, plotView?.Settings);
         }
 
         public void AddPlot(PlotType plotType, AxisScaleType axisScale)
         {
-            // Create the plot of the specified type with custom axis scale
-            var plot = _plotFactory.CreatePlot(200, 200, plotType, axisScale, out var plotView);
+            // Create the plot using PlotFactory defaults
+            var plot = _plotFactory.CreatePlot(plotType, axisScale, out var plotView);
 
             AddPlotToWorksheet(plot, plotView, plotView?.Settings);
         }

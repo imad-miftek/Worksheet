@@ -12,6 +12,13 @@ namespace Worksheet.Views.Support
 {
     public class PlotFactory
     {
+        private static readonly Dictionary<PlotType, (double width, double height)> DefaultPlotSizes = new()
+        {
+            { PlotType.Histogram, (200, 150) },
+            { PlotType.Pseudocolor, (200, 200) },
+            { PlotType.SpectralRibbon, (500, 150) }
+        };
+
         private readonly AxisFactory _axisFactory;
         private readonly HistogramPlotContextMenu _histogramContextMenu;
         private readonly PseudocolorPlotContextMenu _pseudocolorContextMenu;
@@ -70,6 +77,24 @@ namespace Worksheet.Views.Support
             return plot;
         }
 
+        // New overloads that use default sizes based on plot type
+        public WpfPlot CreatePlot(PlotType plotType, out PlotView plotView)
+        {
+            var (width, height) = GetDefaultSize(plotType);
+            return CreatePlot(width, height, plotType, out plotView);
+        }
+
+        public WpfPlot CreatePlot(PlotType plotType, AxisScaleType axisScale, out PlotView plotView)
+        {
+            var (width, height) = GetDefaultSize(plotType);
+            return CreatePlot(width, height, plotType, axisScale, out plotView);
+        }
+
+        private static (double width, double height) GetDefaultSize(PlotType plotType)
+        {
+            return DefaultPlotSizes.GetValueOrDefault(plotType, (200, 200));
+        }
+
         public PlotSettings CreateSettings(PlotType plotType)
         {
             return plotType switch
@@ -80,7 +105,7 @@ namespace Worksheet.Views.Support
                     BinCount = 256,
                     XFeature = 0,
                     YFeature = 0,
-                    XAxisScaleType = AxisScaleType.Linear,
+                    XAxisScaleType = AxisScaleType.Logarithmic,
                     YAxisScaleType = AxisScaleType.Linear
                 },
                 PlotType.Pseudocolor => new PlotSettings
@@ -89,8 +114,8 @@ namespace Worksheet.Views.Support
                     BinCount = 256,
                     XFeature = 0,
                     YFeature = 1,
-                    XAxisScaleType = AxisScaleType.Linear,
-                    YAxisScaleType = AxisScaleType.Linear
+                    XAxisScaleType = AxisScaleType.Logarithmic,
+                    YAxisScaleType = AxisScaleType.Logarithmic
                 },
                 PlotType.SpectralRibbon => new PlotSettings
                 {
@@ -99,7 +124,7 @@ namespace Worksheet.Views.Support
                     XFeature = 0,
                     YFeature = 0,
                     XAxisScaleType = AxisScaleType.Linear,
-                    YAxisScaleType = AxisScaleType.Linear
+                    YAxisScaleType = AxisScaleType.Logarithmic
                 },
                 _ => throw new ArgumentOutOfRangeException(nameof(plotType), plotType, "Unsupported plot type.")
             };
