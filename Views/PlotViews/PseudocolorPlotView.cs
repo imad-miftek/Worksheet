@@ -2,6 +2,7 @@ using ScottPlot.WPF;
 using Worksheet.Models;
 using Worksheet.Models.Data;
 using Worksheet.Views.PlotViews.Axes;
+using Worksheet.Views.PlotViews.Axes;
 using Worksheet.Views.PlotViews.ContextMenus;
 
 namespace Worksheet.Views.PlotViews
@@ -17,6 +18,34 @@ namespace Worksheet.Views.PlotViews
 
         public override void Configure(WpfPlot plot)
         {
+            int bins = Settings.GetBinCount();
+            plot.Plot.Axes.SetLimitsX(0, bins);
+            plot.Plot.Axes.SetLimitsY(0, bins);
+
+            switch (Settings.XAxisScaleType)
+            {
+                case AxisScaleType.Linear:
+                    plot.Plot.Axes.Bottom.TickGenerator = LinearAxisItem.CreateDataTickGenerator(Settings);
+                    plot.Plot.Grid.MinorLineColor = ScottPlot.Colors.Black.WithOpacity(.05);
+                    plot.Plot.Grid.MinorLineWidth = 1;
+                    break;
+                case AxisScaleType.Logarithmic:
+                    plot.Plot.Axes.Bottom.TickGenerator = LogarithmicAxisItem.CreateDataTickGenerator(Settings);
+                    plot.Plot.Grid.MajorLineColor = ScottPlot.Colors.Black.WithOpacity(.15);
+                    plot.Plot.Grid.MinorLineColor = ScottPlot.Colors.Black.WithOpacity(.05);
+                    plot.Plot.Grid.MinorLineWidth = 1;
+                    break;
+            }
+
+            switch (Settings.YAxisScaleType)
+            {
+                case AxisScaleType.Linear:
+                    plot.Plot.Axes.Left.TickGenerator = LinearAxisItem.CreateDataTickGenerator(Settings);
+                    break;
+                case AxisScaleType.Logarithmic:
+                    plot.Plot.Axes.Left.TickGenerator = LogarithmicAxisItem.CreateDataTickGenerator(Settings);
+                    break;
+            }
         }
 
         public override void Render(WpfPlot plot, ProcessedPlotData data)

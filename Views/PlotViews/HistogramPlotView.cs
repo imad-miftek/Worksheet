@@ -26,8 +26,6 @@ namespace Worksheet.Views.PlotViews
         public override void Configure(WpfPlot plot)
         {
             plot.Plot.Axes.Margins(bottom: 0);
-            plot.Plot.YLabel("Frequency");
-            plot.Plot.XLabel("Intensity");
             plot.Plot.Axes.SetLimitsY(0, 10);
             _axisFactory.Apply(Settings.XAxisScaleType, plot, Settings);
         }

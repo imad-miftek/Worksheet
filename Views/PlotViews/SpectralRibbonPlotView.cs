@@ -20,6 +20,15 @@ namespace Worksheet.Views.PlotViews
 
         public override void Configure(WpfPlot plot)
         {
+            int bins = Settings.GetBinCount();
+            int channelCount = FeatureSelectionStrategy.ChannelNames.Count;
+            if (channelCount <= 0)
+                channelCount = 1;
+
+            plot.Plot.Axes.SetLimitsX(0, channelCount);
+            plot.Plot.Axes.SetLimitsY(0, bins);
+            ApplyChannelTicks(plot, channelCount);
+            ApplyYAxisTicks(plot, bins);
         }
 
         public override void Render(WpfPlot plot, ProcessedPlotData data)
