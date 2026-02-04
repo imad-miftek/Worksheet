@@ -52,7 +52,12 @@ namespace Worksheet.Views.PlotViews
             for (int i = 0; i < channelCount; i++)
             {
                 positions[i] = i + 0.5;
-                labels[i] = i < channelNames.Count ? channelNames[i] : $"Channel {i + 1}";
+
+                // Get channel name and remove "nm" suffix if present
+                var channelName = i < channelNames.Count ? channelNames[i] : $"Channel {i + 1}";
+                labels[i] = channelName.EndsWith("nm", StringComparison.OrdinalIgnoreCase)
+                    ? channelName.Substring(0, channelName.Length - 2)
+                    : channelName;
             }
 
             // Add minor tick positions at channel edges (integer boundaries)
@@ -67,8 +72,13 @@ namespace Worksheet.Views.PlotViews
             tickGen.MaxTickCount = channelCount;
 
             plot.Plot.Axes.Bottom.TickGenerator = tickGen;
-            plot.Plot.Axes.Bottom.TickLabelStyle.Rotation = 90;
             plot.Plot.Axes.SetLimitsX(0, channelCount);
+
+            // Configure rotated tick labels - ADJUST THESE VALUES TO ITERATE:
+            plot.Plot.Axes.Bottom.TickLabelStyle.Rotation = 90;  // Try: 90, -90, 45, -45
+            plot.Plot.Axes.Bottom.TickLabelStyle.Alignment = ScottPlot.Alignment.UpperLeft;  // Try: UpperLeft, UpperCenter, UpperRight, MiddleLeft, MiddleCenter, MiddleRight, LowerLeft, LowerCenter, LowerRight
+            plot.Plot.Axes.Bottom.TickLabelStyle.OffsetX = 6;  // Try: 0, 5, 10, -5, -10
+            plot.Plot.Axes.Bottom.TickLabelStyle.OffsetY = 3;  // Try: 0, 5, 10, -5, -10
 
             // Use minor grid lines to align with ribbon edges, and hide minor tick marks
             plot.Plot.Grid.XAxisStyle.MajorLineStyle.IsVisible = false;

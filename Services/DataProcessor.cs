@@ -118,14 +118,29 @@ namespace Worksheet.Services
 
         private ProcessedPlotData ProcessSpectralRibbon(PlotSettings settings)
         {
-            int channelCount = FeatureSelectionStrategy.ChannelNames.Count;
+            var channelNames = FeatureSelectionStrategy.ChannelNames;
+            int channelCount = channelNames.Count;
             int bins = settings.GetBinCount();
+
+            // Return empty data if no channels are loaded
+            if (channelCount == 0)
+            {
+                var emptyData = new double[bins, 1];
+                for (int i = 0; i < bins; i++)
+                    emptyData[i, 0] = double.NaN;
+                return new SpectralRibbonProcessedData(settings.Id, emptyData, Array.Empty<string>());
+            }
+
             // Heatmap expects [rows, cols] = [y, x] so store as [bin, channel].
             var counts = new double[bins, channelCount];
 
+            // Get the actual channel indices (filtered channels only)
+            var channelIndices = GetFilteredChannelIndices();
+
             for (int c = 0; c < channelCount; c++)
             {
-                var values = _dataSource.Get(c);
+                int channelIndex = channelIndices[c];
+                var values = _dataSource.Get(channelIndex);
                 for (int i = 0; i < values.Length; i++)
                 {
                     double pos = settings.DataValueToBinPosition(values[i], settings.YAxisScaleType);
@@ -171,6 +186,24 @@ namespace Worksheet.Services
             }
 
             return new SpectralRibbonProcessedData(settings.Id, counts, Array.Empty<string>());
+        }
+
+        private static List<int> GetFilteredChannelIndices()
+        {
+            // Get all connected channels and find numeric wavelength channels
+            var allChannelNames = FeatureSelectionStrategy.AllChannelNames;
+            var filteredChannelNames = FeatureSelectionStrategy.ChannelNames;
+            var indices = new List<int>();
+
+            for (int i = 0; i < allChannelNames.Count; i++)
+            {
+                if (filteredChannelNames.Contains(allChannelNames[i]))
+                {
+                    indices.Add(i);
+                }
+            }
+
+            return indices;
         }
 
         private static double[,] BuildHeatmapData(int width, int height)

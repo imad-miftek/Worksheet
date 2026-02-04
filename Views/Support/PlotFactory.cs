@@ -144,6 +144,7 @@ namespace Worksheet.Views.Support
             plot.Plot.Axes.AntiAlias(true);
             plot.Plot.Axes.Hairline(true);
             plot.Plot.Axes.Right.MinimumSize = 20;
+            plot.Plot.Axes.Bottom.MinimumSize = 50;
             plot.Plot.Axes.Bottom.TickLabelStyle.FontSize = 13;
             plot.Plot.Axes.Left.TickLabelStyle.FontSize = 13;
             plot.Plot.Axes.Bottom.TickLabelStyle.Bold = true;
