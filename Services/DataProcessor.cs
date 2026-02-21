@@ -1,5 +1,7 @@
 using System;
-using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using MathNet.Numerics.Statistics;
 using Worksheet.Models;
 using Worksheet.Models.Data;
 
@@ -14,35 +16,80 @@ namespace Worksheet.Services
             _dataSource = dataSource;
         }
 
-        public ProcessedPlotData Process(PlotSettings settings)
+        public ProcessedPlotData? Process(PlotSettings settings)
         {
-            return settings.PlotType switch
+            try
             {
-                PlotType.Histogram => ProcessHistogram(settings),
-                PlotType.Pseudocolor => ProcessHeatmap(settings),
-                PlotType.SpectralRibbon => ProcessSpectralRibbon(settings),
-                _ => throw new ArgumentOutOfRangeException(nameof(settings.PlotType), settings.PlotType, "Unsupported plot type.")
-            };
+                return settings.PlotType switch
+                {
+                    PlotType.Histogram => ProcessHistogram(settings),
+                    PlotType.Pseudocolor => ProcessHeatmap(settings),
+                    PlotType.SpectralRibbon => ProcessSpectralRibbon(settings),
+                    _ => throw new ArgumentOutOfRangeException(nameof(settings.PlotType), settings.PlotType, "Unsupported plot type.")
+                };
+            }
+            catch (Exception)
+            {
+                return null;
+            }
+        }
+
+        // Precompute scale/offset and effective clamp bounds once per Process call.
+        // Hot loop calls ToBin which only does a clamp + one multiply + one add (+ Log10 for log scale).
+        private static (double scale, double offset, bool isLog, double effMin, double effMax) BuildBinTransform(
+            PlotSettings settings, AxisScaleType scaleType)
+        {
+            double min = settings.MinValue;
+            double max = settings.MaxValue;
+            int bins = settings.GetBinCount();
+
+            if (scaleType == AxisScaleType.Logarithmic)
+            {
+                if (min < 1) min = 1;
+                if (max <= min) max = min * 10;
+                double minLog = Math.Log10(min);
+                double maxLog = Math.Log10(max);
+                double scale = bins / (maxLog - minLog);
+                double offset = -minLog * scale;
+                return (scale, offset, true, min, max);
+            }
+            else
+            {
+                if (max <= min) max = min + 1;
+                double scale = bins / (max - min);
+                double offset = -min * scale;
+                return (scale, offset, false, min, max);
+            }
+        }
+
+        private static int ToBin(double value, double scale, double offset, bool isLog,
+            int bins, double effMin, double effMax)
+        {
+            if (value < effMin) value = effMin;
+            else if (value > effMax) value = effMax;
+
+            double pos = isLog ? Math.Log10(value) * scale + offset : value * scale + offset;
+            return Math.Clamp((int)pos, 0, bins - 1);
         }
 
         private ProcessedPlotData ProcessHistogram(PlotSettings settings)
         {
             var values = _dataSource.Get(settings.XFeature);
             int binCount = settings.GetBinCount();
+            var (scale, offset, isLog, effMin, effMax) = BuildBinTransform(settings, settings.XAxisScaleType);
+
+            // Each thread accumulates into its own array — no locks needed.
+            var localCounts = new ThreadLocal<double[]>(() => new double[binCount], trackAllValues: true);
+
+            Parallel.For(0, values.Length, i =>
+            {
+                localCounts.Value![ToBin(values[i], scale, offset, isLog, binCount, effMin, effMax)]++;
+            });
 
             var counts = new double[binCount];
-            foreach (var raw in values)
-            {
-                double pos = settings.DataValueToBinPosition(raw, settings.XAxisScaleType);
-                int index = (int)Math.Floor(pos);
-
-                if (index < 0)
-                    index = 0;
-                else if (index >= binCount)
-                    index = binCount - 1;
-
-                counts[index]++;
-            }
+            foreach (var local in localCounts.Values)
+                for (int i = 0; i < binCount; i++)
+                    counts[i] += local[i];
 
             var positions = new double[binCount];
             for (int i = 0; i < binCount; i++)
@@ -55,60 +102,46 @@ namespace Worksheet.Services
         {
             var xValues = _dataSource.Get(settings.XFeature);
             var yValues = _dataSource.Get(settings.YFeature);
-
             int count = Math.Min(xValues.Length, yValues.Length);
             int bins = settings.GetBinCount();
+
+            var (xScale, xOffset, xIsLog, xEffMin, xEffMax) = BuildBinTransform(settings, settings.XAxisScaleType);
+            var (yScale, yOffset, yIsLog, yEffMin, yEffMax) = BuildBinTransform(settings, settings.YAxisScaleType);
+
+            // Thread-local int[,] accumulators — int is sufficient for raw counts.
+            var localCounts = new ThreadLocal<int[,]>(() => new int[bins, bins], trackAllValues: true);
+
+            Parallel.For(0, count, i =>
+            {
+                int xBin = ToBin(xValues[i], xScale, xOffset, xIsLog, bins, xEffMin, xEffMax);
+                int yBin = ToBin(yValues[i], yScale, yOffset, yIsLog, bins, yEffMin, yEffMax);
+                localCounts.Value![xBin, yBin]++;
+            });
+
+            // Merge into a flat double[] for SIMD-accelerated max via ArrayStatistics.
+            var flat = new double[bins * bins];
+            foreach (var local in localCounts.Values)
+                for (int x = 0; x < bins; x++)
+                    for (int y = 0; y < bins; y++)
+                        flat[x * bins + y] += local[x, y];
+
+            double max = ArrayStatistics.Maximum(flat);
+
             var counts = new double[bins, bins];
-
-            for (int i = 0; i < count; i++)
-            {
-                double xPos = settings.DataValueToBinPosition(xValues[i], settings.XAxisScaleType);
-                double yPos = settings.DataValueToBinPosition(yValues[i], settings.YAxisScaleType);
-
-                int xBin = (int)Math.Floor(xPos);
-                int yBin = (int)Math.Floor(yPos);
-
-                if (xBin < 0)
-                    xBin = 0;
-                else if (xBin >= bins)
-                    xBin = bins - 1;
-
-                if (yBin < 0)
-                    yBin = 0;
-                else if (yBin >= bins)
-                    yBin = bins - 1;
-
-                counts[xBin, yBin]++;
-            }
-
-            double max = 0;
-            for (int x = 0; x < bins; x++)
-            {
-                for (int y = 0; y < bins; y++)
-                {
-                    if (counts[x, y] > max)
-                        max = counts[x, y];
-                }
-            }
-
             if (max > 0)
             {
                 for (int x = 0; x < bins; x++)
-                {
                     for (int y = 0; y < bins; y++)
                     {
-                        double value = counts[x, y] / max;
-                        counts[x, y] = value == 0 ? double.NaN : value;
+                        double v = flat[x * bins + y] / max;
+                        counts[x, y] = v == 0 ? double.NaN : v;
                     }
-                }
             }
             else
             {
                 for (int x = 0; x < bins; x++)
-                {
                     for (int y = 0; y < bins; y++)
                         counts[x, y] = double.NaN;
-                }
             }
 
             return new HeatmapProcessedData(settings.Id, counts);
@@ -120,7 +153,6 @@ namespace Worksheet.Services
             int channelCount = channelNames.Count;
             int bins = settings.GetBinCount();
 
-            // Return empty data if no channels are loaded
             if (channelCount == 0)
             {
                 var emptyData = new double[bins, 1];
@@ -129,58 +161,47 @@ namespace Worksheet.Services
                 return new SpectralRibbonProcessedData(settings.Id, emptyData, Array.Empty<string>());
             }
 
-            // Heatmap expects [rows, cols] = [y, x] so store as [bin, channel].
-            var counts = new double[bins, channelCount];
-
-            // Get the actual channel indices (filtered channels only)
+            var (scale, offset, isLog, effMin, effMax) = BuildBinTransform(settings, settings.YAxisScaleType);
             var channelIndices = FeatureSelectionStrategy.FilteredChannelIndices;
 
-            for (int c = 0; c < channelCount; c++)
+            var counts = new double[bins, channelCount];
+
+            // Each channel is fully independent — parallelize across channels.
+            Parallel.For(0, channelCount, c =>
             {
-                int channelIndex = channelIndices[c];
-                var values = _dataSource.Get(channelIndex);
+                var values = _dataSource.Get(channelIndices[c]);
+                var col = new double[bins];
+
                 for (int i = 0; i < values.Length; i++)
-                {
-                    double pos = settings.DataValueToBinPosition(values[i], settings.YAxisScaleType);
-                    int bin = (int)Math.Floor(pos);
+                    col[ToBin(values[i], scale, offset, isLog, bins, effMin, effMax)]++;
 
-                    if (bin < 0)
-                        bin = 0;
-                    else if (bin >= bins)
-                        bin = bins - 1;
+                // Each c is unique so writing distinct columns is race-free.
+                for (int b = 0; b < bins; b++)
+                    counts[b, c] = col[b];
+            });
 
-                    counts[bin, c]++;
-                }
-            }
-
+            // Max over all cells then normalize.
             double max = 0;
             for (int y = 0; y < bins; y++)
-            {
                 for (int x = 0; x < channelCount; x++)
-                {
-                    if (counts[y, x] > max)
-                        max = counts[y, x];
-                }
-            }
+                    if (counts[y, x] > max) max = counts[y, x];
 
             if (max > 0)
             {
-                for (int y = 0; y < bins; y++)
+                Parallel.For(0, bins, y =>
                 {
                     for (int x = 0; x < channelCount; x++)
                     {
-                        double value = counts[y, x] / max;
-                        counts[y, x] = value == 0 ? double.NaN : value;
+                        double v = counts[y, x] / max;
+                        counts[y, x] = v == 0 ? double.NaN : v;
                     }
-                }
+                });
             }
             else
             {
                 for (int y = 0; y < bins; y++)
-                {
                     for (int x = 0; x < channelCount; x++)
                         counts[y, x] = double.NaN;
-                }
             }
 
             return new SpectralRibbonProcessedData(settings.Id, counts, Array.Empty<string>());

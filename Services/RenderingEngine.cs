@@ -49,9 +49,13 @@ namespace Worksheet.Services
             {
                 if (_dataStore.TryGetProcessedData(target.PlotId, out var data))
                 {
+                    if (ReferenceEquals(data, target.LastRenderedData))
+                        continue;
+
                     _dispatcher.Invoke(() =>
                     {
                         target.PlotView.Render(target.Plot, data);
+                        target.LastRenderedData = data;
                     });
                 }
             }
@@ -69,6 +73,7 @@ namespace Worksheet.Services
             public WpfPlot Plot { get; }
             public PlotView PlotView { get; }
             public Guid PlotId { get; }
+            public object? LastRenderedData { get; set; }
         }
     }
 }

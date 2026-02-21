@@ -131,8 +131,8 @@ namespace Worksheet.Views
         private void AddPlotToWorksheet(ScottPlot.WPF.WpfPlot plot, PlotView? plotView, PlotSettings? settings)
         {
             // Create the container structure (use ActualWidth for grid layout)
-            var worksheetWidth = WorksheetGridContainer.ActualWidth > 0
-                ? WorksheetGridContainer.ActualWidth
+            var worksheetWidth = WorksheetScrollViewer.ViewportWidth > 0
+                ? WorksheetScrollViewer.ViewportWidth
                 : 800; // fallback if not yet rendered
             var container = _containerFactory.CreateContainer(plot, WorksheetGridContainer.Children.Count, worksheetWidth);
 

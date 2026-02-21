@@ -2,13 +2,16 @@ using ScottPlot.WPF;
 using Worksheet.Models;
 using Worksheet.Models.Data;
 using Worksheet.Views.PlotViews.Axes;
-using Worksheet.Views.PlotViews.Axes;
 using Worksheet.Views.PlotViews.ContextMenus;
 
 namespace Worksheet.Views.PlotViews
 {
     public class PseudocolorPlotView : PlotView
     {
+        private ScottPlot.Plottables.Heatmap? _heatmap;
+        private readonly ScottPlot.IColormap _colormap = CreateColormap();
+        private PlotConfigSnapshot? _lastAppliedConfig;
+
         public PseudocolorPlotView(PseudocolorPlotContextMenu contextMenu, PlotSettings settings)
             : base(contextMenu, settings)
         {
@@ -18,34 +21,8 @@ namespace Worksheet.Views.PlotViews
 
         public override void Configure(WpfPlot plot)
         {
-            int bins = Settings.GetBinCount();
-            plot.Plot.Axes.SetLimitsX(0, bins);
-            plot.Plot.Axes.SetLimitsY(0, bins);
-
-            switch (Settings.XAxisScaleType)
-            {
-                case AxisScaleType.Linear:
-                    plot.Plot.Axes.Bottom.TickGenerator = LinearAxisItem.CreateDataTickGenerator(Settings);
-                    plot.Plot.Grid.MinorLineColor = ScottPlot.Colors.Black.WithOpacity(.05);
-                    plot.Plot.Grid.MinorLineWidth = 1;
-                    break;
-                case AxisScaleType.Logarithmic:
-                    plot.Plot.Axes.Bottom.TickGenerator = LogarithmicAxisItem.CreateDataTickGenerator(Settings);
-                    plot.Plot.Grid.MajorLineColor = ScottPlot.Colors.Black.WithOpacity(.15);
-                    plot.Plot.Grid.MinorLineColor = ScottPlot.Colors.Black.WithOpacity(.05);
-                    plot.Plot.Grid.MinorLineWidth = 1;
-                    break;
-            }
-
-            switch (Settings.YAxisScaleType)
-            {
-                case AxisScaleType.Linear:
-                    plot.Plot.Axes.Left.TickGenerator = LinearAxisItem.CreateDataTickGenerator(Settings);
-                    break;
-                case AxisScaleType.Logarithmic:
-                    plot.Plot.Axes.Left.TickGenerator = LogarithmicAxisItem.CreateDataTickGenerator(Settings);
-                    break;
-            }
+            ApplyAxisTicks(plot, resetLimits: true);
+            _lastAppliedConfig = PlotConfigSnapshot.From(Settings);
         }
 
         public override void Render(WpfPlot plot, ProcessedPlotData data)
@@ -55,67 +32,100 @@ namespace Worksheet.Views.PlotViews
 
             RenderOnce(plot, () =>
             {
-                plot.Plot.Clear();
-                var heatmap = plot.Plot.Add.Heatmap(heatmapData.Data);
-                heatmap.Extent = new ScottPlot.CoordinateRect(0, Settings.GetBinCount(), 0, Settings.GetBinCount());
-                plot.Plot.Axes.SetLimitsX(0, Settings.GetBinCount());
-                plot.Plot.Axes.SetLimitsY(0, Settings.GetBinCount());
-                heatmap.Colormap = CreateColormap();
-                ApplyAxisTicks(plot);
+                ApplyConfigIfChanged(plot);
+                EnsureHeatmap(plot, heatmapData.Data);
+
+                if (_heatmap == null)
+                    return;
+
+                _heatmap.Intensities = heatmapData.Data;
+                _heatmap.Update();
             });
         }
 
-        private void ApplyAxisTicks(WpfPlot plot)
+        private void EnsureHeatmap(WpfPlot plot, double[,] initialData)
         {
-            ApplyAxisTicks(plot, AxisOrientation.Bottom, Settings.XAxisScaleType, Settings);
-            ApplyAxisTicks(plot, AxisOrientation.Left, Settings.YAxisScaleType, Settings);
+            if (_heatmap != null)
+                return;
+
+            _heatmap = plot.Plot.Add.Heatmap(initialData);
+            _heatmap.Extent = new ScottPlot.CoordinateRect(0, Settings.GetBinCount(), 0, Settings.GetBinCount());
+            _heatmap.Colormap = _colormap;
         }
 
-        private static void ApplyAxisTicks(WpfPlot plot, AxisOrientation orientation, AxisScaleType scaleType, PlotSettings settings)
+        private void ApplyConfigIfChanged(WpfPlot plot)
+        {
+            var current = PlotConfigSnapshot.From(Settings);
+            if (_lastAppliedConfig.HasValue && _lastAppliedConfig.Value.Equals(current))
+                return;
+
+            ApplyAxisTicks(plot, resetLimits: false);
+            if (_heatmap != null)
+                _heatmap.Extent = new ScottPlot.CoordinateRect(0, Settings.GetBinCount(), 0, Settings.GetBinCount());
+
+            _lastAppliedConfig = current;
+        }
+
+        private void ApplyAxisTicks(WpfPlot plot, bool resetLimits)
+        {
+            ApplyAxisTicks(plot, AxisOrientation.Bottom, Settings.XAxisScaleType, Settings, resetLimits);
+            ApplyAxisTicks(plot, AxisOrientation.Left, Settings.YAxisScaleType, Settings, resetLimits);
+        }
+
+        private static void ApplyAxisTicks(
+            WpfPlot plot,
+            AxisOrientation orientation,
+            AxisScaleType scaleType,
+            PlotSettings settings,
+            bool resetLimits)
         {
             switch (scaleType)
             {
                 case AxisScaleType.Linear:
-                    ApplyLinearTicks(plot, orientation, settings);
+                    ApplyLinearTicks(plot, orientation, settings, resetLimits);
                     break;
                 case AxisScaleType.Logarithmic:
-                    ApplyLogarithmicTicks(plot, orientation, settings);
+                    ApplyLogarithmicTicks(plot, orientation, settings, resetLimits);
                     break;
                 default:
                     break;
             }
         }
 
-        private static void ApplyLinearTicks(WpfPlot plot, AxisOrientation orientation, PlotSettings settings)
+        private static void ApplyLinearTicks(WpfPlot plot, AxisOrientation orientation, PlotSettings settings, bool resetLimits)
         {
             var tickGen = LinearAxisItem.CreateDataTickGenerator(settings);
             if (orientation == AxisOrientation.Bottom)
             {
                 plot.Plot.Axes.Bottom.TickGenerator = tickGen;
-                plot.Plot.Axes.SetLimitsX(0, settings.GetBinCount());
+                if (resetLimits)
+                    plot.Plot.Axes.SetLimitsX(0, settings.GetBinCount());
             }
             else if (orientation == AxisOrientation.Left)
             {
                 plot.Plot.Axes.Left.TickGenerator = tickGen;
-                plot.Plot.Axes.SetLimitsY(0, settings.GetBinCount());
+                if (resetLimits)
+                    plot.Plot.Axes.SetLimitsY(0, settings.GetBinCount());
             }
 
             plot.Plot.Grid.MinorLineColor = ScottPlot.Colors.Black.WithOpacity(.05);
             plot.Plot.Grid.MinorLineWidth = 1;
         }
 
-        private static void ApplyLogarithmicTicks(WpfPlot plot, AxisOrientation orientation, PlotSettings settings)
+        private static void ApplyLogarithmicTicks(WpfPlot plot, AxisOrientation orientation, PlotSettings settings, bool resetLimits)
         {
             var tickGen = LogarithmicAxisItem.CreateDataTickGenerator(settings);
             if (orientation == AxisOrientation.Bottom)
             {
                 plot.Plot.Axes.Bottom.TickGenerator = tickGen;
-                plot.Plot.Axes.SetLimitsX(0, settings.GetBinCount());
+                if (resetLimits)
+                    plot.Plot.Axes.SetLimitsX(0, settings.GetBinCount());
             }
             else if (orientation == AxisOrientation.Left)
             {
                 plot.Plot.Axes.Left.TickGenerator = tickGen;
-                plot.Plot.Axes.SetLimitsY(0, settings.GetBinCount());
+                if (resetLimits)
+                    plot.Plot.Axes.SetLimitsY(0, settings.GetBinCount());
             }
 
             plot.Plot.Grid.MajorLineColor = ScottPlot.Colors.Black.WithOpacity(.15);
@@ -133,6 +143,22 @@ namespace Worksheet.Views.PlotViews
             {
                 return new ScottPlot.Colormaps.Viridis();
             }
+        }
+
+        private readonly record struct PlotConfigSnapshot(
+            int BinCount,
+            AxisScaleType XAxisScaleType,
+            AxisScaleType YAxisScaleType,
+            double MinValue,
+            double MaxValue)
+        {
+            public static PlotConfigSnapshot From(PlotSettings settings) =>
+                new(
+                    settings.GetBinCount(),
+                    settings.XAxisScaleType,
+                    settings.YAxisScaleType,
+                    settings.MinValue,
+                    settings.MaxValue);
         }
     }
 }

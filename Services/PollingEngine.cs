@@ -7,6 +7,7 @@ namespace Worksheet.Services
     {
         private readonly TimeSpan _interval;
         private Timer? _timer;
+        private int _isTickRunning;
 
         protected PollingEngine(TimeSpan interval)
         {
@@ -20,7 +21,7 @@ namespace Worksheet.Services
             if (_timer != null)
                 return;
 
-            _timer = new Timer(_ => Tick(), null, _interval, _interval);
+            _timer = new Timer(_ => SafeTick(), null, _interval, _interval);
         }
 
         public override void Stop()
@@ -35,5 +36,20 @@ namespace Worksheet.Services
         }
 
         protected abstract void Tick();
+
+        private void SafeTick()
+        {
+            if (Interlocked.Exchange(ref _isTickRunning, 1) == 1)
+                return;
+
+            try
+            {
+                Tick();
+            }
+            finally
+            {
+                Volatile.Write(ref _isTickRunning, 0);
+            }
+        }
     }
 }

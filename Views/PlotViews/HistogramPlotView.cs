@@ -9,6 +9,8 @@ namespace Worksheet.Views.PlotViews
     public class HistogramPlotView : PlotView
     {
         private readonly AxisFactory _axisFactory;
+        private ScottPlot.Plottables.BarPlot? _barPlot;
+        private HistogramConfigSnapshot? _lastAppliedConfig;
 
         public HistogramPlotView(
             HistogramPlotContextMenu contextMenu,
@@ -27,7 +29,10 @@ namespace Worksheet.Views.PlotViews
         {
             plot.Plot.Axes.Margins(bottom: 0);
             plot.Plot.Axes.SetLimitsY(0, 10);
+            plot.Plot.YLabel("Frequency");
+            plot.Plot.XLabel("Intensity");
             _axisFactory.Apply(Settings.XAxisScaleType, plot, Settings);
+            _lastAppliedConfig = HistogramConfigSnapshot.From(Settings);
         }
 
         public override void Render(WpfPlot plot, ProcessedPlotData data)
@@ -43,45 +48,84 @@ namespace Worksheet.Views.PlotViews
 
             RenderOnce(plot, () =>
             {
-                plot.Plot.Clear();
-
-                var barPlot = plot.Plot.Add.Bars(histogram.Positions, histogram.Counts);
-
-                foreach (var bar in barPlot.Bars)
-                {
-                    bar.Size = 1;
-                    bar.LineWidth = 0;
-                    bar.FillStyle.AntiAlias = false;
-                    bar.FillColor = ScottPlot.Color.FromHex("#4CAF50");
-                }
-
-                plot.Plot.Axes.Margins(bottom: 0);
-                plot.Plot.YLabel("Frequency");
-                plot.Plot.XLabel("Intensity");
-
-                double maxCount = 0;
-                for (int i = 0; i < histogram.Counts.Length; i++)
-                {
-                    if (histogram.Counts[i] > maxCount)
-                        maxCount = histogram.Counts[i];
-                }
-
-                if (maxCount <= 0)
-                {
-                    plot.Plot.Axes.SetLimitsY(0, 10);
-                }
-                else
-                {
-                    plot.Plot.Axes.AutoScaleY();
-                }
-
-                _axisFactory.Apply(Settings.XAxisScaleType, plot, Settings);
+                ApplyConfigIfChanged(plot);
+                EnsureBarPlot(plot, histogram);
+                UpdateBars(histogram);
+                UpdateYAxisLimits(plot, histogram.Counts);
             });
         }
 
         public void UpdateAxisScale(PlotItem plotItem, AxisScaleType newScale)
         {
             Settings.XAxisScaleType = newScale;
+        }
+
+        private void ApplyConfigIfChanged(WpfPlot plot)
+        {
+            var current = HistogramConfigSnapshot.From(Settings);
+            if (_lastAppliedConfig.HasValue && _lastAppliedConfig.Value.Equals(current))
+                return;
+
+            _axisFactory.Apply(Settings.XAxisScaleType, plot, Settings);
+            _lastAppliedConfig = current;
+        }
+
+        private void EnsureBarPlot(WpfPlot plot, HistogramProcessedData histogram)
+        {
+            if (_barPlot != null && _barPlot.Bars.Count == histogram.Counts.Length)
+                return;
+
+            plot.Plot.Clear<ScottPlot.Plottables.BarPlot>();
+            _barPlot = plot.Plot.Add.Bars(histogram.Positions, histogram.Counts);
+            foreach (var bar in _barPlot.Bars)
+            {
+                bar.Size = 1;
+                bar.LineWidth = 0;
+                bar.FillStyle.AntiAlias = false;
+                bar.FillColor = ScottPlot.Color.FromHex("#4CAF50");
+            }
+        }
+
+        private void UpdateBars(HistogramProcessedData histogram)
+        {
+            if (_barPlot == null)
+                return;
+
+            int count = histogram.Counts.Length;
+            for (int i = 0; i < count; i++)
+            {
+                _barPlot.Bars[i].Position = histogram.Positions[i];
+                _barPlot.Bars[i].Value = histogram.Counts[i];
+            }
+        }
+
+        private static void UpdateYAxisLimits(WpfPlot plot, double[] counts)
+        {
+            double maxCount = 0;
+            for (int i = 0; i < counts.Length; i++)
+            {
+                if (counts[i] > maxCount)
+                    maxCount = counts[i];
+            }
+
+            if (maxCount <= 0)
+                plot.Plot.Axes.SetLimitsY(0, 10);
+            else
+                plot.Plot.Axes.AutoScaleY();
+        }
+
+        private readonly record struct HistogramConfigSnapshot(
+            int BinCount,
+            AxisScaleType XAxisScaleType,
+            double MinValue,
+            double MaxValue)
+        {
+            public static HistogramConfigSnapshot From(PlotSettings settings) =>
+                new(
+                    settings.GetBinCount(),
+                    settings.XAxisScaleType,
+                    settings.MinValue,
+                    settings.MaxValue);
         }
     }
 }
