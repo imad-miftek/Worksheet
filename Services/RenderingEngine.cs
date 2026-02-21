@@ -54,8 +54,18 @@ namespace Worksheet.Services
 
                     _dispatcher.Invoke(() =>
                     {
-                        target.PlotView.Render(target.Plot, data);
-                        target.LastRenderedData = data;
+                        try
+                        {
+                            target.PlotView.Render(target.Plot, data);
+                        }
+                        catch
+                        {
+                            // Avoid crashing the dispatcher thread. Mark as rendered to prevent tight exception loops.
+                        }
+                        finally
+                        {
+                            target.LastRenderedData = data;
+                        }
                     });
                 }
             }

@@ -9,6 +9,8 @@
         <!-- Add navigation items here as needed -->
         <StackPanel Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Left">
             <Button Content="Histogram Plot" Margin="5" Click="HistogramPlotButton_Click" />
+            <Button Content="Loaf Config" Margin="5" Click="LoadHistogramConfigButton_Click" />
+            <Button Content="Clear Memory" Margin="5" Click="ClearMemoryButton_Click" />
             <Button Content="Pseudocolor Plot" Margin="5" Click="PseudocolorPlotButton_Click" />
             <Button Content="Spectral Ribbon Plot" Margin="5" Click="SpectralRibbonPlotButton_Click" />
             <Button Content="Oscilloscope Plot" Margin="5" Click="OscilloscopePlotButton_Click" />

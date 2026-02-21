@@ -63,7 +63,14 @@ namespace Worksheet.Views.Support
 
             var settings = CreateSettings(plotType);
             plotView = CreatePlotView(plotType, settings);
-            plotView.Configure(plot);
+            try
+            {
+                plotView.Configure(plot);
+            }
+            catch
+            {
+                // Avoid crashing if a view's Configure() has an issue.
+            }
 
             return plot;
         }
@@ -75,7 +82,14 @@ namespace Worksheet.Views.Support
             var settings = CreateSettings(plotType);
             settings.XAxisScaleType = axisScale;
             plotView = CreatePlotView(plotType, settings);
-            plotView.Configure(plot);
+            try
+            {
+                plotView.Configure(plot);
+            }
+            catch
+            {
+                // Avoid crashing if a view's Configure() has an issue.
+            }
 
             return plot;
         }

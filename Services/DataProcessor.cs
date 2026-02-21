@@ -34,6 +34,24 @@ namespace Worksheet.Services
             }
         }
 
+        public bool AdvanceStream()
+        {
+            return _dataSource.AdvanceStream();
+        }
+
+        public void SetStreamingEnabled(bool enabled)
+        {
+            _dataSource.SetStreamingEnabled(enabled);
+        }
+
+        public void ClearMemory()
+        {
+            _dataSource.ClearMemory();
+        }
+
+        public bool IsStreamingEnabled => _dataSource.IsStreamingEnabled;
+        public long DataVersion => _dataSource.DataVersion;
+
         // Precompute scale/offset and effective clamp bounds once per Process call.
         // Hot loop calls ToBin which only does a clamp + one multiply + one add (+ Log10 for log scale).
         private static (double scale, double offset, bool isLog, double effMin, double effMax) BuildBinTransform(
@@ -75,13 +93,14 @@ namespace Worksheet.Services
         private ProcessedPlotData ProcessHistogram(PlotSettings settings)
         {
             var values = _dataSource.Get(settings.XFeature);
+            int count = _dataSource.GetVisibleLength(settings.XFeature);
             int binCount = settings.GetBinCount();
             var (scale, offset, isLog, effMin, effMax) = BuildBinTransform(settings, settings.XAxisScaleType);
 
             // Each thread accumulates into its own array — no locks needed.
             var localCounts = new ThreadLocal<double[]>(() => new double[binCount], trackAllValues: true);
 
-            Parallel.For(0, values.Length, i =>
+            Parallel.For(0, count, i =>
             {
                 localCounts.Value![ToBin(values[i], scale, offset, isLog, binCount, effMin, effMax)]++;
             });
@@ -102,7 +121,9 @@ namespace Worksheet.Services
         {
             var xValues = _dataSource.Get(settings.XFeature);
             var yValues = _dataSource.Get(settings.YFeature);
-            int count = Math.Min(xValues.Length, yValues.Length);
+            int xCount = _dataSource.GetVisibleLength(settings.XFeature);
+            int yCount = _dataSource.GetVisibleLength(settings.YFeature);
+            int count = Math.Min(xCount, yCount);
             int bins = settings.GetBinCount();
 
             var (xScale, xOffset, xIsLog, xEffMin, xEffMax) = BuildBinTransform(settings, settings.XAxisScaleType);
@@ -170,9 +191,10 @@ namespace Worksheet.Services
             Parallel.For(0, channelCount, c =>
             {
                 var values = _dataSource.Get(channelIndices[c]);
+                int count = _dataSource.GetVisibleLength(channelIndices[c]);
                 var col = new double[bins];
 
-                for (int i = 0; i < values.Length; i++)
+                for (int i = 0; i < count; i++)
                     col[ToBin(values[i], scale, offset, isLog, bins, effMin, effMax)]++;
 
                 // Each c is unique so writing distinct columns is race-free.

@@ -1,12 +1,57 @@
-﻿<UserControl x:Class="Worksheet.Views.Sidebar"
+<UserControl x:Class="Worksheet.Views.Sidebar"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:local="clr-namespace:Worksheet.Views"
              mc:Ignorable="d">
-    <StackPanel Grid.Column="0" Background="LightGray">
-        <TextBlock Text="Controls Panel" FontSize="20" FontWeight="Bold" Margin="10"/>
-        <!-- Add more controls here as needed -->
-    </StackPanel>
+    <Border Padding="14">
+        <Border.Background>
+            <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                <GradientStop Color="#F8FAFC" Offset="0"/>
+                <GradientStop Color="#E2E8F0" Offset="1"/>
+            </LinearGradientBrush>
+        </Border.Background>
+        <StackPanel>
+            <TextBlock Text="Control Panel"
+                       FontSize="24"
+                       FontWeight="Bold"
+                       Foreground="#0F172A"
+                       Margin="0,4,0,12"/>
+
+            <Border Background="#FFFFFF" BorderBrush="#CBD5E1" BorderThickness="1" CornerRadius="10" Padding="12">
+                <StackPanel>
+                    <TextBlock Text="Streaming"
+                               FontSize="14"
+                               FontWeight="SemiBold"
+                               Foreground="#334155"
+                               Margin="0,0,0,8"/>
+
+                    <Button x:Name="StartStreamingButton"
+                            Content="Start Streaming"
+                            Height="36"
+                            Margin="0,0,0,8"
+                            FontWeight="Bold"
+                            Background="#16A34A"
+                            Foreground="White"
+                            BorderThickness="0"
+                            Click="StartStreamingButton_Click"/>
+
+                    <Button x:Name="StopStreamingButton"
+                            Content="Stop Streaming"
+                            Height="36"
+                            FontWeight="Bold"
+                            Background="#DC2626"
+                            Foreground="White"
+                            BorderThickness="0"
+                            Click="StopStreamingButton_Click"/>
+
+                    <TextBlock x:Name="StreamingStatusText"
+                               Text="Status: Stopped"
+                               Foreground="#0F172A"
+                               Margin="0,10,0,0"/>
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </Border>
 </UserControl>

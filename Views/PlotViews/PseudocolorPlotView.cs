@@ -1,6 +1,7 @@
 using ScottPlot.WPF;
 using Worksheet.Models;
 using Worksheet.Models.Data;
+using Worksheet.Services;
 using Worksheet.Views.PlotViews.Axes;
 using Worksheet.Views.PlotViews.ContextMenus;
 
@@ -22,6 +23,7 @@ namespace Worksheet.Views.PlotViews
         public override void Configure(WpfPlot plot)
         {
             ApplyAxisTicks(plot, resetLimits: true);
+            ApplyAxisLabels(plot);
             _lastAppliedConfig = PlotConfigSnapshot.From(Settings);
         }
 
@@ -60,10 +62,25 @@ namespace Worksheet.Views.PlotViews
                 return;
 
             ApplyAxisTicks(plot, resetLimits: false);
+            ApplyAxisLabels(plot);
             if (_heatmap != null)
                 _heatmap.Extent = new ScottPlot.CoordinateRect(0, Settings.GetBinCount(), 0, Settings.GetBinCount());
 
             _lastAppliedConfig = current;
+        }
+
+        private void ApplyAxisLabels(WpfPlot plot)
+        {
+            plot.Plot.XLabel(GetFeatureLabel(Settings.XFeature));
+            plot.Plot.YLabel(GetFeatureLabel(Settings.YFeature));
+        }
+
+        private static string GetFeatureLabel(int featureIndex)
+        {
+            if (FeatureSelectionStrategy.TryGetChannelWavelength(featureIndex, out var wavelength))
+                return wavelength;
+
+            return $"Channel {featureIndex + 1}";
         }
 
         private void ApplyAxisTicks(WpfPlot plot, bool resetLimits)

@@ -21,6 +21,8 @@ namespace Worksheet.Views
     public partial class Toolbar : UserControl
     {
         public event EventHandler? HistogramPlotButtonClicked;
+        public event EventHandler? LoadHistogramConfigButtonClicked;
+        public event EventHandler? ClearMemoryButtonClicked;
         public event EventHandler? PseudocolorPlotButtonClicked;
         public event EventHandler? SpectralRibbonPlotButtonClicked;
         public event EventHandler? OscilloscopePlotButtonClicked;
@@ -33,6 +35,16 @@ namespace Worksheet.Views
         private void HistogramPlotButton_Click(object sender, RoutedEventArgs e)
         {
             HistogramPlotButtonClicked?.Invoke(this, EventArgs.Empty);
+        }
+
+        private void LoadHistogramConfigButton_Click(object sender, RoutedEventArgs e)
+        {
+            LoadHistogramConfigButtonClicked?.Invoke(this, EventArgs.Empty);
+        }
+
+        private void ClearMemoryButton_Click(object sender, RoutedEventArgs e)
+        {
+            ClearMemoryButtonClicked?.Invoke(this, EventArgs.Empty);
         }
 
         private void PseudocolorPlotButton_Click(object sender, RoutedEventArgs e)

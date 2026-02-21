@@ -12,14 +12,29 @@ namespace Worksheet.Views
         {
             InitializeComponent();
             ToolbarControl.HistogramPlotButtonClicked += Toolbar_HistogramPlotButtonClicked;
+            ToolbarControl.LoadHistogramConfigButtonClicked += Toolbar_LoadHistogramConfigButtonClicked;
+            ToolbarControl.ClearMemoryButtonClicked += Toolbar_ClearMemoryButtonClicked;
             ToolbarControl.PseudocolorPlotButtonClicked += Toolbar_PseudocolorPlotButtonClicked;
             ToolbarControl.SpectralRibbonPlotButtonClicked += Toolbar_SpectralRibbonPlotButtonClicked;
             ToolbarControl.OscilloscopePlotButtonClicked += Toolbar_OscilloscopePlotButtonClicked;
+            SidebarControl.StartStreamingClicked += Sidebar_StartStreamingClicked;
+            SidebarControl.StopStreamingClicked += Sidebar_StopStreamingClicked;
+            SidebarControl.SetStreamingState(WorksheetGridControl.IsStreamingEnabled);
         }
 
         private void Toolbar_HistogramPlotButtonClicked(object? sender, System.EventArgs e)
         {
             WorksheetGridControl.AddPlot(PlotType.Histogram);
+        }
+
+        private void Toolbar_LoadHistogramConfigButtonClicked(object? sender, System.EventArgs e)
+        {
+            WorksheetGridControl.LoadLoafConfig();
+        }
+
+        private void Toolbar_ClearMemoryButtonClicked(object? sender, System.EventArgs e)
+        {
+            WorksheetGridControl.ClearMemory();
         }
 
         private void Toolbar_PseudocolorPlotButtonClicked(object? sender, System.EventArgs e)
@@ -35,6 +50,18 @@ namespace Worksheet.Views
         private void Toolbar_OscilloscopePlotButtonClicked(object? sender, System.EventArgs e)
         {
             WorksheetGridControl.AddPlot(PlotType.Oscilloscope);
+        }
+
+        private void Sidebar_StartStreamingClicked(object? sender, System.EventArgs e)
+        {
+            WorksheetGridControl.SetStreamingEnabled(true);
+            SidebarControl.SetStreamingState(WorksheetGridControl.IsStreamingEnabled);
+        }
+
+        private void Sidebar_StopStreamingClicked(object? sender, System.EventArgs e)
+        {
+            WorksheetGridControl.SetStreamingEnabled(false);
+            SidebarControl.SetStreamingState(WorksheetGridControl.IsStreamingEnabled);
         }
     }
 }

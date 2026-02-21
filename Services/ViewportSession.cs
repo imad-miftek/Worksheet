@@ -26,6 +26,7 @@ namespace Worksheet.Services
 
         public DataStore DataStore => _dataStore;
         public FeatureSelectionStrategy FeatureSelection => _featureSelection;
+        public bool IsStreamingEnabled => _dataProcessor.IsStreamingEnabled;
 
         public void Start()
         {
@@ -60,6 +61,16 @@ namespace Worksheet.Services
         public void RegisterRenderTarget(WpfPlot plot, Views.PlotViews.PlotView plotView, PlotSettings settings)
         {
             _renderingEngine.Register(plot, plotView, settings);
+        }
+
+        public void SetStreamingEnabled(bool enabled)
+        {
+            _dataProcessor.SetStreamingEnabled(enabled);
+        }
+
+        public void ClearMemory()
+        {
+            _dataProcessor.ClearMemory();
         }
     }
 }

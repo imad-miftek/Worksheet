@@ -13,7 +13,7 @@
         </Grid.ColumnDefinitions>
 
         <!--Left Sidebar-->
-        <local:Sidebar Grid.Column="0"/>
+        <local:Sidebar x:Name="SidebarControl" Grid.Column="0"/>
 
         <!--Main Content Area-->
         <Grid Grid.Column="1" Background="White">

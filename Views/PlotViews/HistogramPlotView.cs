@@ -1,6 +1,7 @@
 using ScottPlot.WPF;
 using Worksheet.Models;
 using Worksheet.Models.Data;
+using Worksheet.Services;
 using Worksheet.Views.PlotViews.Axes;
 using Worksheet.Views.PlotViews.ContextMenus;
 
@@ -30,7 +31,7 @@ namespace Worksheet.Views.PlotViews
             plot.Plot.Axes.Margins(bottom: 0);
             plot.Plot.Axes.SetLimitsY(0, 10);
             plot.Plot.YLabel("Frequency");
-            plot.Plot.XLabel("Intensity");
+            plot.Plot.XLabel(GetXAxisLabel(Settings.XFeature));
             _axisFactory.Apply(Settings.XAxisScaleType, plot, Settings);
             _lastAppliedConfig = HistogramConfigSnapshot.From(Settings);
         }
@@ -66,6 +67,7 @@ namespace Worksheet.Views.PlotViews
             if (_lastAppliedConfig.HasValue && _lastAppliedConfig.Value.Equals(current))
                 return;
 
+            plot.Plot.XLabel(GetXAxisLabel(Settings.XFeature));
             _axisFactory.Apply(Settings.XAxisScaleType, plot, Settings);
             _lastAppliedConfig = current;
         }
@@ -116,6 +118,7 @@ namespace Worksheet.Views.PlotViews
 
         private readonly record struct HistogramConfigSnapshot(
             int BinCount,
+            int XFeature,
             AxisScaleType XAxisScaleType,
             double MinValue,
             double MaxValue)
@@ -123,9 +126,18 @@ namespace Worksheet.Views.PlotViews
             public static HistogramConfigSnapshot From(PlotSettings settings) =>
                 new(
                     settings.GetBinCount(),
+                    settings.XFeature,
                     settings.XAxisScaleType,
                     settings.MinValue,
                     settings.MaxValue);
+        }
+
+        private static string GetXAxisLabel(int featureIndex)
+        {
+            if (FeatureSelectionStrategy.TryGetChannelWavelength(featureIndex, out var wavelength))
+                return $"Intensity ({wavelength})";
+
+            return $"Intensity (Channel {featureIndex + 1})";
         }
     }
 }

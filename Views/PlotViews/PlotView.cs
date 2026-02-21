@@ -33,7 +33,15 @@ namespace Worksheet.Views.PlotViews
             plot.Plot.RenderManager.EnableRendering = false;
             try
             {
-                renderAction();
+                try
+                {
+                    renderAction();
+                }
+                catch
+                {
+                    // Prevent a bad render path from crashing the UI thread.
+                    return;
+                }
             }
             finally
             {

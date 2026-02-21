@@ -20,9 +20,29 @@ namespace Worksheet.Views
     /// </summary>
     public partial class Sidebar : UserControl
     {
+        public event EventHandler? StartStreamingClicked;
+        public event EventHandler? StopStreamingClicked;
+
         public Sidebar()
         {
             InitializeComponent();
+        }
+
+        private void StartStreamingButton_Click(object sender, RoutedEventArgs e)
+        {
+            StartStreamingClicked?.Invoke(this, EventArgs.Empty);
+        }
+
+        private void StopStreamingButton_Click(object sender, RoutedEventArgs e)
+        {
+            StopStreamingClicked?.Invoke(this, EventArgs.Empty);
+        }
+
+        public void SetStreamingState(bool isStreamingEnabled)
+        {
+            StartStreamingButton.IsEnabled = !isStreamingEnabled;
+            StopStreamingButton.IsEnabled = isStreamingEnabled;
+            StreamingStatusText.Text = isStreamingEnabled ? "Status: Running" : "Status: Stopped";
         }
     }
 }

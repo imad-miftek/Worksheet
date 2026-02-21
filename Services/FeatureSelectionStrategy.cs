@@ -68,6 +68,27 @@ namespace Worksheet.Services
             }
         }
 
+        public static bool TryGetChannelWavelength(int channelId, out string wavelength)
+        {
+            lock (_lock)
+            {
+                if (_channelSettings == null || _channelSettings.ChannelCount == 0)
+                {
+                    wavelength = string.Empty;
+                    return false;
+                }
+
+                if (channelId < 0 || channelId >= _channelSettings.AllChannels.Count)
+                {
+                    wavelength = string.Empty;
+                    return false;
+                }
+
+                wavelength = _channelSettings.AllChannels[channelId].Wavelength;
+                return true;
+            }
+        }
+
         public IReadOnlyList<string> GetXFeatureNames(PlotType plotType)
         {
             return plotType == PlotType.Histogram || plotType == PlotType.Pseudocolor

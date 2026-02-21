@@ -1,6 +1,8 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Collections.Generic;
+using System.Linq;
 using Worksheet.Models;
 using Worksheet.Services;
 using Worksheet.Views.PlotViews;
@@ -10,6 +12,7 @@ namespace Worksheet.Views
 {
     public partial class WorksheetGrid : UserControl
     {
+        private const double LayoutMargin = 10;
         private readonly SelectionManager<IWorksheetItem> _selectionManager;
         private readonly PlotFactory _plotFactory;
         private readonly PlotContainerFactory _containerFactory;
@@ -31,6 +34,8 @@ namespace Worksheet.Views
                 UpdateGridBackground();
             }
         }
+
+        public bool IsStreamingEnabled => _viewportSession.IsStreamingEnabled;
 
         public WorksheetGrid() : this(
             new SelectionManager<IWorksheetItem>(),
@@ -128,6 +133,246 @@ namespace Worksheet.Views
             AddPlotToWorksheet(plot, plotView, plotView?.Settings);
         }
 
+        public void AddHistogramPlotsForAllChannels()
+        {
+            var indices = _viewportSession.FeatureSelection.GetXFeatureIndices(PlotType.Histogram);
+
+            if (indices.Count == 0)
+            {
+                const int fallbackChannelCount = 60;
+                for (int i = 0; i < fallbackChannelCount; i++)
+                    AddHistogramPlotForChannel(i);
+                return;
+            }
+
+            for (int i = 0; i < indices.Count; i++)
+                AddHistogramPlotForChannel(indices[i]);
+        }
+
+        private void AddHistogramPlotForChannel(int featureIndex)
+        {
+            var plot = _plotFactory.CreatePlot(PlotType.Histogram, out var plotView);
+            if (plotView?.Settings != null)
+                plotView.Settings.XFeature = featureIndex;
+
+            AddPlotToWorksheet(plot, plotView, plotView?.Settings);
+        }
+
+        public void LoadLoafConfig()
+        {
+            double worksheetWidth = WorksheetScrollViewer.ViewportWidth > 0
+                ? WorksheetScrollViewer.ViewportWidth
+                : 800;
+
+            double startY = GetNextPlacementY(LayoutMargin);
+            double x = LayoutMargin;
+
+            // Row 1: 2 pseudocolors + 1 spectral ribbon
+            AddConfiguredPseudocolor(x, startY, "QPD H", "QPD V");
+            x += 200 + LayoutMargin;
+
+            AddConfiguredPseudocolor(x, startY, "372nm", "293nm");
+            x += 200 + LayoutMargin;
+
+            AddConfiguredSpectralRibbon(x, startY);
+
+            double rowHeight = 200; // pseudocolor default height
+            double histStartY = startY + rowHeight + LayoutMargin;
+
+            // Row 2+: histograms for all channels
+            AddHistogramGrid(histStartY, worksheetWidth);
+        }
+
+        private void AddConfiguredPseudocolor(double x, double y, string xName, string yName)
+        {
+            var plot = _plotFactory.CreatePlot(PlotType.Pseudocolor, out var plotView);
+            if (plotView?.Settings == null)
+                return;
+
+            var channelMap = GetChannelNameToIdMap();
+            if (!TryResolveChannelId(channelMap, xName, out int xId, out string resolvedX))
+                xId = plotView.Settings.XFeature;
+            if (!TryResolveChannelId(channelMap, yName, out int yId, out string resolvedY, excludeId: xId))
+                yId = plotView.Settings.YFeature;
+
+            plotView.Settings.XFeature = xId;
+            plotView.Settings.YFeature = yId;
+
+            AddPlotToWorksheetAt(plot, plotView, plotView.Settings, x, y);
+        }
+
+        private void AddConfiguredSpectralRibbon(double x, double y)
+        {
+            var plot = _plotFactory.CreatePlot(PlotType.SpectralRibbon, out var plotView);
+            if (plotView?.Settings == null)
+                return;
+
+            AddPlotToWorksheetAt(plot, plotView, plotView.Settings, x, y);
+        }
+
+        private void AddHistogramGrid(double startY, double worksheetWidth)
+        {
+            var indices = _viewportSession.FeatureSelection.GetXFeatureIndices(PlotType.Histogram);
+            List<int> ids = indices.Count == 0
+                ? Enumerable.Range(0, 60).ToList()
+                : indices.ToList();
+
+            const double plotWidth = 200;
+            const double plotHeight = 150;
+            int plotsPerRow = Math.Max(1, (int)((worksheetWidth - LayoutMargin) / (plotWidth + LayoutMargin)));
+
+            for (int i = 0; i < ids.Count; i++)
+            {
+                int col = i % plotsPerRow;
+                int row = i / plotsPerRow;
+                double x = LayoutMargin + col * (plotWidth + LayoutMargin);
+                double y = startY + row * (plotHeight + LayoutMargin);
+
+                var plot = _plotFactory.CreatePlot(PlotType.Histogram, out var plotView);
+                if (plotView?.Settings != null)
+                    plotView.Settings.XFeature = ids[i];
+
+                AddPlotToWorksheetAt(plot, plotView, plotView?.Settings, x, y);
+            }
+        }
+
+        private double GetNextPlacementY(double margin)
+        {
+            double maxBottom = margin;
+            foreach (UIElement child in WorksheetGridContainer.Children)
+            {
+                if (child is FrameworkElement fe)
+                {
+                    double top = Canvas.GetTop(fe);
+                    if (double.IsNaN(top)) top = 0;
+                    double bottom = top + fe.Height;
+                    if (bottom > maxBottom) maxBottom = bottom;
+                }
+            }
+            return maxBottom + margin;
+        }
+
+        private Dictionary<string, int> GetChannelNameToIdMap()
+        {
+            var names = _viewportSession.FeatureSelection.GetXFeatureNames(PlotType.Histogram);
+            var ids = _viewportSession.FeatureSelection.GetXFeatureIndices(PlotType.Histogram);
+            var map = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
+            int count = Math.Min(names.Count, ids.Count);
+            for (int i = 0; i < count; i++)
+                map[names[i]] = ids[i];
+
+            return map;
+        }
+
+        private static bool TryResolveChannelId(
+            Dictionary<string, int> channelMap,
+            string requestedName,
+            out int id,
+            out string resolvedName,
+            int? excludeId = null)
+        {
+            if (channelMap.TryGetValue(requestedName, out id) && (!excludeId.HasValue || id != excludeId.Value))
+            {
+                resolvedName = requestedName;
+                return true;
+            }
+
+            // If requested is a wavelength, pick the nearest available wavelength (avoid picking excludeId).
+            if (TryParseWavelength(requestedName, out double requestedNm))
+            {
+                double bestDist = double.MaxValue;
+                int bestId = -1;
+                string bestName = string.Empty;
+
+                foreach (var kvp in channelMap)
+                {
+                    if (excludeId.HasValue && kvp.Value == excludeId.Value)
+                        continue;
+
+                    if (!TryParseWavelength(kvp.Key, out double nm))
+                        continue;
+
+                    double dist = Math.Abs(nm - requestedNm);
+                    if (dist < bestDist)
+                    {
+                        bestDist = dist;
+                        bestId = kvp.Value;
+                        bestName = kvp.Key;
+                    }
+                }
+
+                if (bestId >= 0)
+                {
+                    id = bestId;
+                    resolvedName = bestName;
+                    return true;
+                }
+            }
+
+            id = -1;
+            resolvedName = string.Empty;
+            return false;
+        }
+
+        private static bool TryParseWavelength(string name, out double nm)
+        {
+            nm = 0;
+            if (string.IsNullOrWhiteSpace(name))
+                return false;
+
+            var s = name.Trim();
+            if (s.EndsWith("nm", StringComparison.OrdinalIgnoreCase))
+                s = s.Substring(0, s.Length - 2);
+
+            return double.TryParse(s, out nm);
+        }
+
+        private void AddPlotToWorksheetAt(ScottPlot.WPF.WpfPlot plot, PlotView? plotView, PlotSettings? settings, double x, double y)
+        {
+            var worksheetWidth = WorksheetScrollViewer.ViewportWidth > 0
+                ? WorksheetScrollViewer.ViewportWidth
+                : 800;
+
+            var container = _containerFactory.CreateContainer(plot, WorksheetGridContainer.Children.Count, worksheetWidth);
+            Canvas.SetLeft(container.Container, x);
+            Canvas.SetTop(container.Container, y);
+
+            var thumbs = _thumbManager.CreateThumbs(container.Overlay);
+            _thumbManager.AttachPositioning(plot, thumbs);
+            _thumbManager.AttachResize(thumbs, container, plot, SnapSize);
+
+            var plotItem = new PlotItem(plot, container, thumbs)
+            {
+                PlotView = plotView,
+                OnCloseRequested = (item) =>
+                {
+                    if (settings != null && settings.PlotType != PlotType.Oscilloscope)
+                    {
+                        _viewportSession.UnregisterPlot(settings.Id);
+                    }
+
+                    _selectionManager.Unregister(item);
+                    WorksheetGridContainer.Children.Remove(item.Container);
+                }
+            };
+
+            _dragHandler.AttachDrag(container.DragLayer, plotItem,
+                                    WorksheetGridContainer, _selectionManager, SnapSize);
+
+            plotView?.AttachContextMenu(plotItem);
+            _selectionManager.Register(plotItem, plotItem.OnSelect, plotItem.OnDeselect);
+
+            if (plotView != null && settings != null && settings.PlotType != PlotType.Oscilloscope)
+            {
+                _viewportSession.RegisterPlot(settings);
+                _viewportSession.RegisterRenderTarget(plot, plotView, settings);
+            }
+
+            WorksheetGridContainer.Children.Add(container.Container);
+            _selectionManager.Select(plotItem);
+        }
+
         private void AddPlotToWorksheet(ScottPlot.WPF.WpfPlot plot, PlotView? plotView, PlotSettings? settings)
         {
             // Create the container structure (use ActualWidth for grid layout)
@@ -177,6 +422,21 @@ namespace Worksheet.Views
             // Add to worksheet and select
             WorksheetGridContainer.Children.Add(container.Container);
             _selectionManager.Select(plotItem);
+        }
+
+        public void SetStreamingEnabled(bool enabled)
+        {
+            _viewportSession.SetStreamingEnabled(enabled);
+        }
+
+        public void ToggleStreaming()
+        {
+            _viewportSession.SetStreamingEnabled(!_viewportSession.IsStreamingEnabled);
+        }
+
+        public void ClearMemory()
+        {
+            _viewportSession.ClearMemory();
         }
     }
 }
