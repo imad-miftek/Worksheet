@@ -7,6 +7,7 @@ using Worksheet.Services;
 using Worksheet.Views.PlotViews;
 using Worksheet.Views.PlotViews.Axes;
 using Worksheet.Views.PlotViews.ContextMenus;
+using Worksheet.Views.PlotViews.Gates;
 
 namespace Worksheet.Views.Support
 {
@@ -26,19 +27,22 @@ namespace Worksheet.Views.Support
         private readonly SpectralRibbonPlotContextMenu _spectralRibbonContextMenu;
         private readonly OscilloscopeContextMenu _oscilloscopeContextMenu;
         private readonly FeatureSelectionStrategy _featureSelectionStrategy;
+        private readonly IGateVisualManagerFactory _gateVisualManagerFactory;
 
         public PlotFactory()
-            : this(new AxisFactory(), new FeatureSelectionStrategy(), new SpectralRibbonPlotContextMenu())
+            : this(new AxisFactory(), new FeatureSelectionStrategy(), new SpectralRibbonPlotContextMenu(), new GateVisualManagerFactory())
         {
         }
 
         public PlotFactory(
             AxisFactory axisFactory,
             FeatureSelectionStrategy featureSelectionStrategy,
-            SpectralRibbonPlotContextMenu spectralRibbonContextMenu)
+            SpectralRibbonPlotContextMenu spectralRibbonContextMenu,
+            IGateVisualManagerFactory gateVisualManagerFactory)
         {
             _axisFactory = axisFactory;
             _featureSelectionStrategy = featureSelectionStrategy;
+            _gateVisualManagerFactory = gateVisualManagerFactory;
             _histogramContextMenu = new HistogramPlotContextMenu(_featureSelectionStrategy);
             _pseudocolorContextMenu = new PseudocolorPlotContextMenu(_featureSelectionStrategy);
             _spectralRibbonContextMenu = spectralRibbonContextMenu;
@@ -163,7 +167,7 @@ namespace Worksheet.Views.Support
             return plotType switch
             {
                 PlotType.Histogram => new HistogramPlotView(_histogramContextMenu, _axisFactory, settings),
-                PlotType.Pseudocolor => new PseudocolorPlotView(_pseudocolorContextMenu, settings),
+                PlotType.Pseudocolor => new PseudocolorPlotView(_pseudocolorContextMenu, settings, _gateVisualManagerFactory.Create()),
                 PlotType.SpectralRibbon => new SpectralRibbonPlotView(_spectralRibbonContextMenu, settings),
                 PlotType.Oscilloscope => new OscilloscopePlotView(_oscilloscopeContextMenu, settings),
                 _ => throw new ArgumentOutOfRangeException(nameof(plotType), plotType, "Unsupported plot type.")
