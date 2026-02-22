@@ -7,13 +7,13 @@ using Worksheet.Models.Data;
 
 namespace Worksheet.Services
 {
-    public class DataProcessor
+    public class PlotProcessor
     {
-        private readonly DataSource _dataSource;
+        private readonly IChannelDataBuffer _buffer;
 
-        public DataProcessor(DataSource dataSource)
+        public PlotProcessor(IChannelDataBuffer buffer)
         {
-            _dataSource = dataSource;
+            _buffer = buffer;
         }
 
         public ProcessedPlotData? Process(PlotSettings settings)
@@ -30,28 +30,10 @@ namespace Worksheet.Services
             }
             catch (Exception ex)
             {
-                AppLog.Exception(ex, $"DataProcessor.Process plotType={settings.PlotType} plotId={settings.Id} x={settings.XFeature} y={settings.YFeature}");
+                AppLog.Exception(ex, $"PlotProcessor.Process plotType={settings.PlotType} plotId={settings.Id} x={settings.XFeature} y={settings.YFeature}");
                 return null;
             }
         }
-
-        public bool AdvanceStream()
-        {
-            return _dataSource.AdvanceStream();
-        }
-
-        public void SetStreamingEnabled(bool enabled)
-        {
-            _dataSource.SetStreamingEnabled(enabled);
-        }
-
-        public void ClearMemory()
-        {
-            _dataSource.ClearMemory();
-        }
-
-        public bool IsStreamingEnabled => _dataSource.IsStreamingEnabled;
-        public long DataVersion => _dataSource.DataVersion;
 
         // Precompute scale/offset and effective clamp bounds once per Process call.
         // Hot loop calls ToBin which only does a clamp + one multiply + one add (+ Log10 for log scale).
@@ -93,8 +75,8 @@ namespace Worksheet.Services
 
         private ProcessedPlotData ProcessHistogram(PlotSettings settings)
         {
-            var values = _dataSource.Get(settings.XFeature);
-            int count = _dataSource.GetVisibleLength(settings.XFeature);
+            var values = _buffer.Get(settings.XFeature);
+            int count = _buffer.GetVisibleLength(settings.XFeature);
             int binCount = settings.GetBinCount();
             var (scale, offset, isLog, effMin, effMax) = BuildBinTransform(settings, settings.XAxisScaleType);
 
@@ -120,10 +102,10 @@ namespace Worksheet.Services
 
         private ProcessedPlotData ProcessHeatmap(PlotSettings settings)
         {
-            var xValues = _dataSource.Get(settings.XFeature);
-            var yValues = _dataSource.Get(settings.YFeature);
-            int xCount = _dataSource.GetVisibleLength(settings.XFeature);
-            int yCount = _dataSource.GetVisibleLength(settings.YFeature);
+            var xValues = _buffer.Get(settings.XFeature);
+            var yValues = _buffer.Get(settings.YFeature);
+            int xCount = _buffer.GetVisibleLength(settings.XFeature);
+            int yCount = _buffer.GetVisibleLength(settings.YFeature);
             int count = Math.Min(xCount, yCount);
             int bins = settings.GetBinCount();
             bool isEmpty = count <= 0;
@@ -196,8 +178,8 @@ namespace Worksheet.Services
             // Each channel is fully independent — parallelize across channels.
             Parallel.For(0, channelCount, c =>
             {
-                var values = _dataSource.Get(channelIndices[c]);
-                int count = _dataSource.GetVisibleLength(channelIndices[c]);
+                var values = _buffer.Get(channelIndices[c]);
+                int count = _buffer.GetVisibleLength(channelIndices[c]);
                 var col = new double[bins];
 
                 for (int i = 0; i < count; i++)

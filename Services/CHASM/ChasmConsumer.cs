@@ -1,0 +1,27 @@
+using System.Threading;
+using System.Threading.Channels;
+using System.Threading.Tasks;
+
+namespace Worksheet.Services
+{
+    public sealed class ChasmConsumer : IConsumer
+    {
+        private readonly ChannelReader<EventBatch> _reader;
+        private readonly IChasmDataSource _dataSource;
+
+        public ChasmConsumer(ChannelReader<EventBatch> reader, IChasmDataSource dataSource)
+        {
+            _reader = reader;
+            _dataSource = dataSource;
+        }
+
+        public async Task RunAsync(CancellationToken token)
+        {
+            await foreach (var batch in _reader.ReadAllAsync(token).ConfigureAwait(false))
+            {
+                _dataSource.Append(batch);
+            }
+        }
+    }
+}
+

@@ -8,20 +8,21 @@ namespace Worksheet.Services
     public class ProcessingEngine : PollingEngine
     {
         private readonly DataStore _dataStore;
-        private readonly DataProcessor _dataProcessor;
+        private readonly PlotProcessor _plotProcessor;
+        private readonly Func<long> _getDataVersion;
         private readonly Dictionary<Guid, SettingsFingerprint> _lastProcessedSettings = new();
 
-        public ProcessingEngine(DataStore dataStore, DataProcessor dataProcessor, TimeSpan interval)
+        public ProcessingEngine(DataStore dataStore, PlotProcessor plotProcessor, Func<long> getDataVersion, TimeSpan interval)
             : base(interval)
         {
             _dataStore = dataStore;
-            _dataProcessor = dataProcessor;
+            _plotProcessor = plotProcessor;
+            _getDataVersion = getDataVersion;
         }
 
         protected override void Tick()
         {
-            _dataProcessor.AdvanceStream();
-            long dataVersion = _dataProcessor.DataVersion;
+            long dataVersion = _getDataVersion();
 
             var settings = _dataStore.GetAllSettings();
             var activePlotIds = new HashSet<Guid>();
@@ -34,7 +35,7 @@ namespace Worksheet.Services
                 if (_lastProcessedSettings.TryGetValue(plotSettings.Id, out var previous) && previous.Equals(fingerprint))
                     continue;
 
-                var processed = _dataProcessor.Process(plotSettings);
+                var processed = _plotProcessor.Process(plotSettings);
                 if (processed != null)
                 {
                     _dataStore.SetProcessedData(processed);

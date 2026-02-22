@@ -95,6 +95,43 @@ namespace Worksheet.Services
             }
         }
 
+        // CHASM append path: acquisition produces batches and the consumer appends them into the buffer.
+        public void AppendBatch(double[][] channels, int count)
+        {
+            if (channels == null)
+                throw new ArgumentNullException(nameof(channels));
+            if (channels.Length != ChannelCount)
+                throw new ArgumentException($"channels must have length {ChannelCount}.", nameof(channels));
+            if (count < 0)
+                throw new ArgumentOutOfRangeException(nameof(count));
+            if (count == 0)
+                return;
+
+            for (int c = 0; c < ChannelCount; c++)
+            {
+                if (channels[c] == null)
+                    throw new ArgumentException($"channels[{c}] is null.", nameof(channels));
+                if (channels[c].Length != count)
+                    throw new ArgumentException($"channels[{c}] length must equal count.", nameof(channels));
+            }
+
+            lock (_lock)
+            {
+                int start = _maxSampleCount;
+                int newLen = start + count;
+
+                for (int c = 0; c < ChannelCount; c++)
+                    Array.Resize(ref _channels[c], newLen);
+
+                for (int c = 0; c < ChannelCount; c++)
+                    Array.Copy(channels[c], 0, _channels[c], start, count);
+
+                _maxSampleCount = newLen;
+                _visibleSampleCount = newLen;
+                _dataVersion++;
+            }
+        }
+
         public bool IsStreamingEnabled
         {
             get
