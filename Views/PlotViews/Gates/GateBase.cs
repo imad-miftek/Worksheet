@@ -1,11 +1,13 @@
 using ScottPlot.WPF;
 using System;
+using System.Collections.Generic;
 
 namespace Worksheet.Views.PlotViews.Gates
 {
     public abstract class GateBase
     {
         private readonly GateStyle _style;
+        private readonly List<ScottPlot.IPlottable> _auxPlottables = new();
 
         protected GateBase(Guid gateId, string name, double xMin, double xMax, double yMin, double yMax, GateStyle style)
         {
@@ -25,8 +27,9 @@ namespace Worksheet.Views.PlotViews.Gates
         public double YMin { get; private set; }
         public double YMax { get; private set; }
 
-        public ScottPlot.Plottables.Polygon? Plottable { get; private set; }
-        public ScottPlot.IPlottable? LabelPlottable { get; private set; }
+        public ScottPlot.IPlottable? Plottable { get; protected set; }
+        public ScottPlot.IPlottable? LabelPlottable { get; protected set; }
+        public IReadOnlyList<ScottPlot.IPlottable> AuxiliaryPlottables => _auxPlottables;
 
         public virtual bool Contains(ScottPlot.Coordinates c) =>
             c.X >= XMin && c.X <= XMax && c.Y >= YMin && c.Y <= YMax;
@@ -39,60 +42,82 @@ namespace Worksheet.Views.PlotViews.Gates
             YMax = yMax;
         }
 
-        public void RebuildPlottable(WpfPlot plot)
+        public virtual void RebuildPlottable(WpfPlot plot)
+        {
+            RemovePlottables(plot);
+            var gate = AddPolygon(plot, BuildCoordinates(), _style.LineColor, _style.FillColor, _style.LineWidth);
+            Plottable = gate;
+            LabelPlottable = AddDefaultCenteredLabel(plot, Name, (XMin + XMax) / 2, (YMin + YMax) / 2);
+        }
+
+        protected void RemovePlottables(WpfPlot plot)
         {
             if (Plottable != null)
             {
-                try
-                {
-                    plot.Plot.Remove(Plottable);
-                }
-                catch
-                {
-                }
+                try { plot.Plot.Remove(Plottable); } catch { }
+                Plottable = null;
             }
 
             if (LabelPlottable != null)
             {
-                try
-                {
-                    plot.Plot.Remove(LabelPlottable);
-                }
-                catch
-                {
-                }
+                try { plot.Plot.Remove(LabelPlottable); } catch { }
+                LabelPlottable = null;
             }
 
+            if (_auxPlottables.Count > 0)
+            {
+                foreach (var pl in _auxPlottables)
+                {
+                    try { plot.Plot.Remove(pl); } catch { }
+                }
+                _auxPlottables.Clear();
+            }
+        }
+
+        protected ScottPlot.IPlottable AddPolygon(
+            WpfPlot plot,
+            IReadOnlyList<ScottPlot.Coordinates> coords,
+            ScottPlot.Color lineColor,
+            ScottPlot.Color fillColor,
+            float lineWidth)
+        {
             ScottPlot.Plottables.Polygon gate;
-            var coords = BuildCoordinates();
             try
             {
-                gate = plot.Plot.Add.Polygon(coords);
+                gate = plot.Plot.Add.Polygon(coords.ToArray());
             }
             catch
             {
-                gate = new ScottPlot.Plottables.Polygon(coords);
+                gate = new ScottPlot.Plottables.Polygon(coords.ToArray());
                 plot.Plot.PlottableList.Add(gate);
             }
 
-            gate.LineWidth = _style.LineWidth;
-            gate.LineColor = _style.LineColor;
-            gate.FillColor = _style.FillColor;
-            Plottable = gate;
+            gate.LineWidth = lineWidth;
+            gate.LineColor = lineColor;
+            gate.FillColor = fillColor;
+            return gate;
+        }
 
+        protected ScottPlot.IPlottable? AddDefaultCenteredLabel(WpfPlot plot, string text, double x, double y)
+        {
             try
             {
-                var label = plot.Plot.Add.Text(Name, (XMin + XMax) / 2, (YMin + YMax) / 2);
+                var label = plot.Plot.Add.Text(text, x, y);
                 label.Alignment = ScottPlot.Alignment.MiddleCenter;
                 label.LabelFontColor = ScottPlot.Colors.Black;
                 label.LabelStyle.FontSize += 2;
                 label.LabelStyle.Bold = true;
-                LabelPlottable = label;
+                return label;
             }
             catch
             {
-                LabelPlottable = null;
+                return null;
             }
+        }
+
+        protected void RegisterAuxiliaryPlottable(ScottPlot.IPlottable plottable)
+        {
+            _auxPlottables.Add(plottable);
         }
 
         protected abstract ScottPlot.Coordinates[] BuildCoordinates();

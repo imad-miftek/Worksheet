@@ -1,0 +1,114 @@
+using System;
+using ScottPlot.WPF;
+
+namespace Worksheet.Views.PlotViews.Gates
+{
+    public sealed class LineGate : GateBase
+    {
+        private const double LineThicknessXBins = 0.35;
+
+        public LineGate(
+            Guid gateId,
+            string name,
+            double xMin,
+            double xMax,
+            double yMin,
+            double yMax,
+            double yFraction,
+            GateStyle style)
+            : base(gateId, name, xMin, xMax, yMin, yMax, style)
+        {
+            YFraction = Math.Clamp(yFraction, 0, 1);
+        }
+
+        public double YFraction { get; private set; }
+
+        public void SetYFraction(double value) => YFraction = Math.Clamp(value, 0, 1);
+
+        public override bool Contains(ScottPlot.Coordinates c)
+        {
+            double yLine = YMin + (YMax - YMin) * YFraction;
+            double xTol = Math.Max(0.5, LineThicknessXBins * 1.5);
+            double yTol = Math.Max(1e-6, (YMax - YMin) * 0.02);
+
+            bool nearLeft = Math.Abs(c.X - XMin) <= xTol;
+            bool nearRight = Math.Abs(c.X - XMax) <= xTol;
+            bool onMid = c.X >= XMin - xTol && c.X <= XMax + xTol && Math.Abs(c.Y - yLine) <= yTol;
+            return nearLeft || nearRight || onMid;
+        }
+
+        public override void RebuildPlottable(WpfPlot plot)
+        {
+            RemovePlottables(plot);
+
+            double ySpan = Math.Max(1e-6, YMax - YMin);
+            double yLine = YMin + ySpan * YFraction;
+            double halfX = LineThicknessXBins / 2.0;
+            double halfY = ComputeHalfYFromVerticalPixelWidth(plot, yLine, halfX);
+
+            var lineColor = ScottPlot.Colors.Black;
+            var fillColor = ScottPlot.Colors.Black;
+
+            var left = AddPolygon(plot, new[]
+            {
+                new ScottPlot.Coordinates(XMin - halfX, YMin),
+                new ScottPlot.Coordinates(XMin + halfX, YMin),
+                new ScottPlot.Coordinates(XMin + halfX, YMax),
+                new ScottPlot.Coordinates(XMin - halfX, YMax),
+            }, lineColor, fillColor, 1);
+
+            var right = AddPolygon(plot, new[]
+            {
+                new ScottPlot.Coordinates(XMax - halfX, YMin),
+                new ScottPlot.Coordinates(XMax + halfX, YMin),
+                new ScottPlot.Coordinates(XMax + halfX, YMax),
+                new ScottPlot.Coordinates(XMax - halfX, YMax),
+            }, lineColor, fillColor, 1);
+
+            var mid = AddPolygon(plot, new[]
+            {
+                new ScottPlot.Coordinates(XMin, yLine - halfY),
+                new ScottPlot.Coordinates(XMax, yLine - halfY),
+                new ScottPlot.Coordinates(XMax, yLine + halfY),
+                new ScottPlot.Coordinates(XMin, yLine + halfY),
+            }, lineColor, fillColor, 1);
+
+            Plottable = mid;
+            RegisterAuxiliaryPlottable(left);
+            RegisterAuxiliaryPlottable(right);
+            LabelPlottable = AddDefaultCenteredLabel(plot, Name, (XMin + XMax) / 2.0, yLine + (ySpan * 0.04));
+        }
+
+        private double ComputeHalfYFromVerticalPixelWidth(WpfPlot plot, double yLine, double halfX)
+        {
+            try
+            {
+                var axes = plot.Plot.Axes;
+                double xCenter = (XMin + XMax) / 2.0;
+                var pxLeft = plot.Plot.GetPixel(new ScottPlot.Coordinates(xCenter - halfX, yLine), axes.Bottom, axes.Left);
+                var pxRight = plot.Plot.GetPixel(new ScottPlot.Coordinates(xCenter + halfX, yLine), axes.Bottom, axes.Left);
+                double widthPx = Math.Abs(pxRight.X - pxLeft.X);
+                if (widthPx < 1)
+                    widthPx = 1;
+
+                var c1 = plot.Plot.GetCoordinates((float)pxLeft.X, (float)pxLeft.Y, axes.Bottom, axes.Left);
+                var c2 = plot.Plot.GetCoordinates((float)pxLeft.X, (float)(pxLeft.Y + widthPx), axes.Bottom, axes.Left);
+                double thicknessY = Math.Abs(c2.Y - c1.Y);
+                return Math.Max(1e-6, thicknessY / 2.0);
+            }
+            catch
+            {
+                return Math.Max(1e-6, (YMax - YMin) * 0.004);
+            }
+        }
+
+        protected override ScottPlot.Coordinates[] BuildCoordinates() =>
+            new[]
+            {
+                new ScottPlot.Coordinates(XMin, YMin),
+                new ScottPlot.Coordinates(XMax, YMin),
+                new ScottPlot.Coordinates(XMax, YMax),
+                new ScottPlot.Coordinates(XMin, YMax),
+            };
+    }
+}

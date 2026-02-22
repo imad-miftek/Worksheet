@@ -1,25 +1,33 @@
 using ScottPlot.WPF;
 using Worksheet.Models;
 using Worksheet.Models.Data;
+using Worksheet.Models.Gates;
 using Worksheet.Services;
 using Worksheet.Views.PlotViews.Axes;
 using Worksheet.Views.PlotViews.ContextMenus;
+using Worksheet.Views.Support.Gates;
 
 namespace Worksheet.Views.PlotViews
 {
     public class HistogramPlotView : PlotView
     {
         private readonly AxisFactory _axisFactory;
+        private readonly GateVisualManager _gateVisualManager;
         private ScottPlot.Plottables.BarPlot? _barPlot;
         private HistogramConfigSnapshot? _lastAppliedConfig;
+
+        public Action<GateSettings>? GateSettingsSink { get; set; }
+        public Action<Guid>? GateRemovedSink { get; set; }
 
         public HistogramPlotView(
             HistogramPlotContextMenu contextMenu,
             AxisFactory axisFactory,
-            PlotSettings settings)
+            PlotSettings settings,
+            GateVisualManager gateVisualManager)
             : base(contextMenu, settings)
         {
             _axisFactory = axisFactory;
+            _gateVisualManager = gateVisualManager;
         }
 
         public override PlotType PlotType => PlotType.Histogram;
@@ -73,6 +81,26 @@ namespace Worksheet.Views.PlotViews
         {
             Settings.XAxisScaleType = newScale;
         }
+
+        internal void AttachGateInteractions(PlotItem plotItem)
+        {
+            _gateVisualManager.Attach(
+                plotItem,
+                () => Settings.GetBinCount(),
+                () => Settings.Id,
+                () => Settings.PlotType,
+                GateSettingsSink,
+                GateRemovedSink);
+        }
+
+        internal void BeginAddLineGate(PlotItem plotItem)
+        {
+            _gateVisualManager.BeginAddLineGate(plotItem);
+        }
+
+        internal bool HasSelectedGate() => _gateVisualManager.HasSelectedGate;
+
+        internal bool RemoveSelectedGate(PlotItem plotItem) => _gateVisualManager.RemoveSelectedGate(plotItem);
 
         private void ApplyConfigIfChanged(WpfPlot plot)
         {

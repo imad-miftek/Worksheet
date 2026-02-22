@@ -384,6 +384,11 @@ namespace Worksheet.Views
                 pcView.GateSettingsSink = gate => _viewportSession.UpsertGate(gate);
                 pcView.GateRemovedSink = gateId => _viewportSession.RemoveGate(gateId);
             }
+            else if (plotView is HistogramPlotView histView)
+            {
+                histView.GateSettingsSink = gate => _viewportSession.UpsertGate(gate);
+                histView.GateRemovedSink = gateId => _viewportSession.RemoveGate(gateId);
+            }
 
             plotView?.AttachContextMenu(plotItem);
             _selectionManager.Register(plotItem, plotItem.OnSelect, plotItem.OnDeselect);
@@ -445,6 +450,11 @@ namespace Worksheet.Views
             {
                 pcView.GateSettingsSink = gate => _viewportSession.UpsertGate(gate);
                 pcView.GateRemovedSink = gateId => _viewportSession.RemoveGate(gateId);
+            }
+            else if (plotView is HistogramPlotView histView)
+            {
+                histView.GateSettingsSink = gate => _viewportSession.UpsertGate(gate);
+                histView.GateRemovedSink = gateId => _viewportSession.RemoveGate(gateId);
             }
 
             plotView?.AttachContextMenu(plotItem);

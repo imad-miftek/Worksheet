@@ -20,6 +20,7 @@ namespace Worksheet.Views.Support.Gates
         private const double HandleSizeDip = 6;
         private const double PolygonCloseThresholdDip = 16;
         private const double PolygonCloseCueSizeDip = 8;
+        private const double MinLineGateWidthBins = 1;
 
         private readonly List<GateBase> _gates = new();
 
@@ -36,6 +37,9 @@ namespace Worksheet.Views.Support.Gates
         private Ellipse? _previewEllipse;
         private Polyline? _previewPolygon;
         private Rectangle? _polygonCloseCue;
+        private Rectangle? _previewLineLeft;
+        private Rectangle? _previewLineRight;
+        private Rectangle? _previewLineMid;
         private bool _isDrawingGate;
         private bool _isDrawDragActive;
         private Point _dragStartDip;
@@ -46,6 +50,9 @@ namespace Worksheet.Views.Support.Gates
         private Rectangle? _handleTR;
         private Rectangle? _handleBL;
         private Rectangle? _handleBR;
+        private Rectangle? _lineHandleLeft;
+        private Rectangle? _lineHandleRight;
+        private Rectangle? _lineHandleCenter;
         private Rectangle? _ellipseBoundsRect;
         private readonly List<Rectangle> _polygonVertexHandles = new();
         private int _activePolygonVertexIndex = -1;
@@ -66,6 +73,10 @@ namespace Worksheet.Views.Support.Gates
             ResizeBL,
             ResizeBR,
             VertexDrag,
+            LineResizeLeft,
+            LineResizeRight,
+            LineMoveY,
+            LineMoveAll,
         }
 
         private readonly record struct GateBounds(double XMin, double XMax, double YMin, double YMax);
@@ -104,6 +115,7 @@ namespace Worksheet.Views.Support.Gates
             {
                 try
                 {
+                    SyncLineGatesToCurrentYAxis(plotItem);
                     UpdateHandlePositions(plotItem);
                 }
                 catch
@@ -130,6 +142,17 @@ namespace Worksheet.Views.Support.Gates
             }
             catch
             {
+            }
+
+            foreach (var aux in gate.AuxiliaryPlottables)
+            {
+                try
+                {
+                    plotItem.Plot.Plot.Remove(aux);
+                }
+                catch
+                {
+                }
             }
 
             try
@@ -175,6 +198,11 @@ namespace Worksheet.Views.Support.Gates
             BeginAddGate(plotItem, GateType.Polygon);
         }
 
+        public void BeginAddLineGate(PlotItem plotItem)
+        {
+            BeginAddGate(plotItem, GateType.Rectangle);
+        }
+
         private void BeginAddGate(PlotItem plotItem, GateType gateType)
         {
             if (plotItem?.Plot == null)
@@ -184,6 +212,7 @@ namespace Worksheet.Views.Support.Gates
                 return;
 
             var polygonVerticesDip = new List<Point>();
+            bool isHistogramLineMode = _getPlotType() == PlotType.Histogram;
 
             try
             {
@@ -191,17 +220,20 @@ namespace Worksheet.Views.Support.Gates
                 plotItem.Plot.Refresh();
 
                 EnsureGateLayer(plotItem);
-                if (_gateLayer == null || _previewRect == null || _previewEllipse == null || _previewPolygon == null || _polygonCloseCue == null)
+                if (_gateLayer == null || _previewRect == null || _previewEllipse == null || _previewPolygon == null || _polygonCloseCue == null || _previewLineLeft == null || _previewLineRight == null || _previewLineMid == null)
                     return;
 
                 _isDrawingGate = true;
                 _isDrawDragActive = false;
                 _gateLayer.IsHitTestVisible = true;
                 _gateLayer.Cursor = Cursors.Cross;
-                _previewRect.Visibility = gateType == GateType.Rectangle ? Visibility.Visible : Visibility.Collapsed;
+                _previewRect.Visibility = gateType == GateType.Rectangle && !isHistogramLineMode ? Visibility.Visible : Visibility.Collapsed;
                 _previewEllipse.Visibility = gateType == GateType.Ellipse ? Visibility.Visible : Visibility.Collapsed;
                 _previewPolygon.Visibility = gateType == GateType.Polygon ? Visibility.Visible : Visibility.Collapsed;
                 _polygonCloseCue.Visibility = Visibility.Collapsed;
+                _previewLineLeft.Visibility = isHistogramLineMode ? Visibility.Visible : Visibility.Collapsed;
+                _previewLineRight.Visibility = isHistogramLineMode ? Visibility.Visible : Visibility.Collapsed;
+                _previewLineMid.Visibility = isHistogramLineMode ? Visibility.Visible : Visibility.Collapsed;
                 _previewRect.Width = 0;
                 _previewRect.Height = 0;
                 _previewEllipse.Width = 0;
@@ -212,6 +244,7 @@ namespace Worksheet.Views.Support.Gates
                 _gateLayer.MouseMove += GateLayer_MouseMove;
                 _gateLayer.MouseLeftButtonUp += GateLayer_MouseLeftButtonUp;
                 _gateLayer.MouseRightButtonDown += GateLayer_MouseRightButtonDown;
+                _gateLayer.LostMouseCapture += GateLayer_LostMouseCapture;
             }
             catch (Exception ex)
             {
@@ -226,7 +259,7 @@ namespace Worksheet.Views.Support.Gates
 
             void GateLayer_MouseLeftButtonDown(object? sender, MouseButtonEventArgs e)
             {
-                if (!_isDrawingGate || _gateLayer == null || _previewRect == null || _previewEllipse == null || _previewPolygon == null || _polygonCloseCue == null)
+                if (!_isDrawingGate || _gateLayer == null || _previewRect == null || _previewEllipse == null || _previewPolygon == null || _polygonCloseCue == null || _previewLineLeft == null || _previewLineRight == null || _previewLineMid == null)
                     return;
 
                 if (_createGateType == GateType.Polygon)
@@ -273,7 +306,7 @@ namespace Worksheet.Views.Support.Gates
 
             void GateLayer_MouseMove(object? sender, MouseEventArgs e)
             {
-                if (!_isDrawingGate || _gateLayer == null || _previewRect == null || _previewEllipse == null || _previewPolygon == null || _polygonCloseCue == null)
+                if (!_isDrawingGate || _gateLayer == null || _previewRect == null || _previewEllipse == null || _previewPolygon == null || _polygonCloseCue == null || _previewLineLeft == null || _previewLineRight == null || _previewLineMid == null)
                     return;
 
                 if (_createGateType == GateType.Polygon)
@@ -297,7 +330,7 @@ namespace Worksheet.Views.Support.Gates
 
             void GateLayer_MouseLeftButtonUp(object? sender, MouseButtonEventArgs e)
             {
-                if (!_isDrawingGate || _gateLayer == null || _previewRect == null || _previewEllipse == null || _previewPolygon == null || _polygonCloseCue == null)
+                if (!_isDrawingGate || _gateLayer == null || _previewRect == null || _previewEllipse == null || _previewPolygon == null || _polygonCloseCue == null || _previewLineLeft == null || _previewLineRight == null || _previewLineMid == null)
                     return;
 
                 if (_createGateType == GateType.Polygon)
@@ -306,15 +339,15 @@ namespace Worksheet.Views.Support.Gates
                     return;
                 }
 
-                if (!_isDrawDragActive || !_gateLayer.IsMouseCaptured)
-                    return;
-
                 var end = e.GetPosition(_gateLayer);
-                _gateLayer.ReleaseMouseCapture();
+                bool shouldFinalize = _isDrawDragActive;
+                if (_gateLayer.IsMouseCaptured)
+                    _gateLayer.ReleaseMouseCapture();
 
                 try
                 {
-                    FinalizeGate(plotItem, _dragStartDip, end, _createGateType);
+                    if (shouldFinalize)
+                        FinalizeGate(plotItem, _dragStartDip, end, _createGateType);
                 }
                 catch (Exception ex)
                 {
@@ -328,13 +361,31 @@ namespace Worksheet.Views.Support.Gates
                 e.Handled = true;
             }
 
+            void GateLayer_LostMouseCapture(object? sender, MouseEventArgs e)
+            {
+                if (!_isDrawingGate || _gateLayer == null)
+                    return;
+
+                if (_createGateType == GateType.Polygon)
+                    return;
+
+                ExitDrawMode();
+            }
+
             void GateLayer_MouseRightButtonDown(object? sender, MouseButtonEventArgs e)
             {
-                if (!_isDrawingGate || _gateLayer == null || _previewRect == null || _previewEllipse == null || _previewPolygon == null || _polygonCloseCue == null)
+                if (!_isDrawingGate || _gateLayer == null || _previewRect == null || _previewEllipse == null || _previewPolygon == null || _polygonCloseCue == null || _previewLineLeft == null || _previewLineRight == null || _previewLineMid == null)
                     return;
 
                 if (_createGateType != GateType.Polygon)
+                {
+                    if (isHistogramLineMode)
+                    {
+                        ExitDrawMode();
+                        e.Handled = true;
+                    }
                     return;
+                }
 
                 try
                 {
@@ -357,7 +408,7 @@ namespace Worksheet.Views.Support.Gates
 
             void ExitDrawMode()
             {
-                if (_gateLayer == null || _previewRect == null || _previewEllipse == null || _previewPolygon == null || _polygonCloseCue == null)
+                if (_gateLayer == null || _previewRect == null || _previewEllipse == null || _previewPolygon == null || _polygonCloseCue == null || _previewLineLeft == null || _previewLineRight == null || _previewLineMid == null)
                     return;
 
                 _isDrawingGate = false;
@@ -366,6 +417,9 @@ namespace Worksheet.Views.Support.Gates
                 _previewEllipse.Visibility = Visibility.Collapsed;
                 _previewPolygon.Visibility = Visibility.Collapsed;
                 _polygonCloseCue.Visibility = Visibility.Collapsed;
+                _previewLineLeft.Visibility = Visibility.Collapsed;
+                _previewLineRight.Visibility = Visibility.Collapsed;
+                _previewLineMid.Visibility = Visibility.Collapsed;
                 _previewPolygon.Points.Clear();
                 _gateLayer.IsHitTestVisible = false;
                 _gateLayer.Cursor = null;
@@ -374,6 +428,7 @@ namespace Worksheet.Views.Support.Gates
                 _gateLayer.MouseMove -= GateLayer_MouseMove;
                 _gateLayer.MouseLeftButtonUp -= GateLayer_MouseLeftButtonUp;
                 _gateLayer.MouseRightButtonDown -= GateLayer_MouseRightButtonDown;
+                _gateLayer.LostMouseCapture -= GateLayer_LostMouseCapture;
             }
 
             void UpdatePreview(Point start, Point end)
@@ -395,6 +450,42 @@ namespace Worksheet.Views.Support.Gates
                 Canvas.SetTop(_previewEllipse, y);
                 _previewEllipse.Width = w;
                 _previewEllipse.Height = h;
+
+                if (isHistogramLineMode && _previewLineLeft != null && _previewLineRight != null && _previewLineMid != null && _gateLayer != null)
+                {
+                    double lineX1 = Math.Min(start.X, end.X);
+                    double lineX2 = Math.Max(start.X, end.X);
+                    GetHistogramPreviewYBounds(plotItem, out double yTopDip, out double yBottomDip);
+                    double lineY = Math.Clamp(start.Y, yTopDip, yBottomDip);
+                    double hLayer = Math.Max(1, yBottomDip - yTopDip);
+                    DrawPreviewLineRect(_previewLineLeft, lineX1 - 1, yTopDip, 2, hLayer);
+                    DrawPreviewLineRect(_previewLineRight, lineX2 - 1, yTopDip, 2, hLayer);
+                    DrawPreviewLineRect(_previewLineMid, lineX1, lineY - 1, Math.Max(2, lineX2 - lineX1), 2);
+                }
+            }
+
+            static void GetHistogramPreviewYBounds(PlotItem plotItem, out double yTopDip, out double yBottomDip)
+            {
+                yTopDip = 0;
+                yBottomDip = Math.Max(1, plotItem.PlotContainer.Host.ActualHeight);
+
+                try
+                {
+                    var limits = plotItem.Plot.Plot.Axes.GetLimits();
+                    double yMin = 0;
+                    double yMax = Math.Max(1, limits.Top);
+                    double xRef = limits.Left;
+                    var axes = plotItem.Plot.Plot.Axes;
+                    var pxTop = plotItem.Plot.Plot.GetPixel(new ScottPlot.Coordinates(xRef, yMax), axes.Bottom, axes.Left);
+                    var pxBottom = plotItem.Plot.Plot.GetPixel(new ScottPlot.Coordinates(xRef, yMin), axes.Bottom, axes.Left);
+                    var dpi = VisualTreeHelper.GetDpi(plotItem.Plot);
+
+                    yTopDip = Math.Min(pxTop.Y, pxBottom.Y) / dpi.DpiScaleY;
+                    yBottomDip = Math.Max(pxTop.Y, pxBottom.Y) / dpi.DpiScaleY;
+                }
+                catch
+                {
+                }
             }
 
             void UpdatePolygonPreviewWithHover(Point hover)
@@ -453,7 +544,7 @@ namespace Worksheet.Views.Support.Gates
 
         private void EnsureGateLayer(PlotItem plotItem)
         {
-            if (_gateLayer != null && _previewRect != null && _previewEllipse != null && _previewPolygon != null && _polygonCloseCue != null)
+            if (_gateLayer != null && _previewRect != null && _previewEllipse != null && _previewPolygon != null && _polygonCloseCue != null && _previewLineLeft != null && _previewLineRight != null && _previewLineMid != null)
                 return;
 
             var overlay = plotItem.PlotContainer?.Overlay;
@@ -515,17 +606,46 @@ namespace Worksheet.Views.Support.Gates
                 IsHitTestVisible = false,
             };
 
+            _previewLineLeft = new Rectangle
+            {
+                Stroke = Brushes.Black,
+                StrokeThickness = 1,
+                Fill = Brushes.Black,
+                Visibility = Visibility.Collapsed,
+                IsHitTestVisible = false,
+            };
+            _previewLineRight = new Rectangle
+            {
+                Stroke = Brushes.Black,
+                StrokeThickness = 1,
+                Fill = Brushes.Black,
+                Visibility = Visibility.Collapsed,
+                IsHitTestVisible = false,
+            };
+            _previewLineMid = new Rectangle
+            {
+                Stroke = Brushes.Black,
+                StrokeThickness = 1,
+                Fill = Brushes.Black,
+                Visibility = Visibility.Collapsed,
+                IsHitTestVisible = false,
+            };
+
             _gateLayer.Children.Add(_previewRect);
             _gateLayer.Children.Add(_previewEllipse);
             _gateLayer.Children.Add(_previewPolygon);
             _gateLayer.Children.Add(_polygonCloseCue);
+            _gateLayer.Children.Add(_previewLineLeft);
+            _gateLayer.Children.Add(_previewLineRight);
+            _gateLayer.Children.Add(_previewLineMid);
         }
 
         private void FinalizeGate(PlotItem plotItem, Point startDip, Point endDip, GateType gateType)
         {
+            bool histogramLine = _getPlotType() == PlotType.Histogram;
             double wDip = Math.Abs(endDip.X - startDip.X);
             double hDip = Math.Abs(endDip.Y - startDip.Y);
-            if (wDip < 4 || hDip < 4)
+            if (wDip < 4 || (!histogramLine && hDip < 4))
                 return;
 
             var plot = plotItem.Plot;
@@ -546,29 +666,56 @@ namespace Worksheet.Views.Support.Gates
             double yMax = Math.Max(c1.Y, c2.Y);
 
             int bins = GetBinCount();
-            ClampRect(ref xMin, ref xMax, ref yMin, ref yMax, bins);
+            if (histogramLine)
+            {
+                var limits = plot.Plot.Axes.GetLimits();
+                yMin = 0;
+                yMax = Math.Max(1, limits.Top);
+                if (yMax <= yMin)
+                    yMax = yMin + 1;
+                xMin = Math.Clamp(xMin, 0, bins);
+                xMax = Math.Clamp(xMax, 0, bins);
+                if (xMax - xMin < MinLineGateWidthBins)
+                    xMax = Math.Clamp(xMin + MinLineGateWidthBins, 0, bins);
+            }
+            else
+            {
+                ClampRect(ref xMin, ref xMax, ref yMin, ref yMax, bins);
+            }
 
             var gateId = Guid.NewGuid();
             string gateName = GenerateNextGateName(_gates.Select(g => g.Name));
-            GateBase gate = gateType switch
+            GateBase gate;
+            if (histogramLine)
             {
-                GateType.Ellipse => new EllipseGate(gateId, gateName, xMin, xMax, yMin, yMax, GateStyle.DefaultRectangle),
-                GateType.Polygon => new PolygonGate(
-                    gateId,
-                    gateName,
-                    new[]
-                    {
-                        new ScottPlot.Coordinates(xMin, yMin),
-                        new ScottPlot.Coordinates(xMax, yMin),
-                        new ScottPlot.Coordinates(xMax, yMax),
-                        new ScottPlot.Coordinates(xMin, yMax),
-                    },
-                    GateStyle.DefaultRectangle),
-                _ => new RectangleGate(gateId, gateName, xMin, xMax, yMin, yMax, GateStyle.DefaultRectangle),
-            };
+                double yFrac = (startDip.Y / Math.Max(1, _gateLayer?.ActualHeight > 0 ? _gateLayer.ActualHeight : _gateLayer?.Height ?? 1));
+                yFrac = Math.Clamp(1.0 - yFrac, 0, 1);
+                gate = new LineGate(gateId, gateName, xMin, xMax, yMin, yMax, yFrac, GateStyle.DefaultRectangle);
+            }
+            else
+            {
+                gate = gateType switch
+                {
+                    GateType.Ellipse => new EllipseGate(gateId, gateName, xMin, xMax, yMin, yMax, GateStyle.DefaultRectangle),
+                    GateType.Polygon => new PolygonGate(
+                        gateId,
+                        gateName,
+                        new[]
+                        {
+                            new ScottPlot.Coordinates(xMin, yMin),
+                            new ScottPlot.Coordinates(xMax, yMin),
+                            new ScottPlot.Coordinates(xMax, yMax),
+                            new ScottPlot.Coordinates(xMin, yMax),
+                        },
+                        GateStyle.DefaultRectangle),
+                    _ => new RectangleGate(gateId, gateName, xMin, xMax, yMin, yMax, GateStyle.DefaultRectangle),
+                };
+            }
             gate.RebuildPlottable(plot);
             if (gate.Plottable != null)
                 plot.Plot.MoveToTop(gate.Plottable);
+            foreach (var aux in gate.AuxiliaryPlottables)
+                plot.Plot.MoveToTop(aux);
             if (gate.LabelPlottable != null)
                 plot.Plot.MoveToTop(gate.LabelPlottable);
 
@@ -621,7 +768,7 @@ namespace Worksheet.Views.Support.Gates
 
         private void EnsureHandlesLayer(PlotItem plotItem)
         {
-            if (_handlesLayer != null && _handleTL != null && _handleTR != null && _handleBL != null && _handleBR != null)
+            if (_handlesLayer != null && _handleTL != null && _handleTR != null && _handleBL != null && _handleBR != null && _lineHandleLeft != null && _lineHandleRight != null && _lineHandleCenter != null)
                 return;
 
             var overlay = plotItem.PlotContainer?.Overlay;
@@ -663,6 +810,17 @@ namespace Worksheet.Views.Support.Gates
             _handlesLayer.Children.Add(_handleBL);
             _handlesLayer.Children.Add(_handleBR);
 
+            _lineHandleLeft = MakeHandle(Cursors.SizeWE);
+            _lineHandleRight = MakeHandle(Cursors.SizeWE);
+            _lineHandleCenter = MakeHandle(Cursors.Hand);
+            _lineHandleLeft.MouseLeftButtonDown += (_, e) => StartResize(plotItem, GateInteractionMode.LineResizeLeft, e);
+            _lineHandleRight.MouseLeftButtonDown += (_, e) => StartResize(plotItem, GateInteractionMode.LineResizeRight, e);
+            _lineHandleCenter.MouseLeftButtonDown += (_, e) => StartResize(plotItem, GateInteractionMode.LineMoveAll, e);
+
+            _handlesLayer.Children.Add(_lineHandleLeft);
+            _handlesLayer.Children.Add(_lineHandleRight);
+            _handlesLayer.Children.Add(_lineHandleCenter);
+
             _ellipseBoundsRect = new Rectangle
             {
                 Stroke = Brushes.Black,
@@ -699,8 +857,9 @@ namespace Worksheet.Views.Support.Gates
             try
             {
                 var dragLayer = _interactionPlotItem.PlotContainer.DragLayer;
-                var coord = MouseToCoord(_interactionPlotItem.Plot, e.GetPosition(dragLayer));
-                int hitIndex = HitTestGate(coord);
+                var mouseDip = e.GetPosition(dragLayer);
+                var coord = MouseToCoord(_interactionPlotItem.Plot, mouseDip);
+                int hitIndex = HitTestGate(_interactionPlotItem, coord, mouseDip, out var lineMode);
                 if (hitIndex < 0)
                 {
                     DeselectGate(_interactionPlotItem);
@@ -708,8 +867,20 @@ namespace Worksheet.Views.Support.Gates
                 }
 
                 SelectGate(hitIndex, _interactionPlotItem);
-                // debug mask overlay removed
-                BeginMove(_interactionPlotItem, coord);
+                if (_gates[hitIndex] is LineGate)
+                {
+                    if (lineMode == GateInteractionMode.None)
+                    {
+                        _interactionMode = GateInteractionMode.None;
+                        _gateInteractionDirty = false;
+                        e.Handled = true;
+                        return;
+                    }
+
+                    BeginLineInteraction(_interactionPlotItem, coord, mouseDip, lineMode);
+                }
+                else
+                    BeginMove(_interactionPlotItem, coord);
                 e.Handled = true;
                 dragLayer.CaptureMouse();
             }
@@ -721,18 +892,53 @@ namespace Worksheet.Views.Support.Gates
 
         private void DragLayer_PreviewMouseMove(object sender, MouseEventArgs e)
         {
-            if (_interactionMode == GateInteractionMode.None || _interactionPlotItem == null)
+            if (_interactionPlotItem == null)
                 return;
 
             var dragLayer = _interactionPlotItem.PlotContainer.DragLayer;
-            if (!dragLayer.IsMouseCaptured)
+
+            if (_interactionMode == GateInteractionMode.None || !dragLayer.IsMouseCaptured)
+            {
+                // Hover cursor hint for line gates when not dragging.
+                var mouseDip = e.GetPosition(dragLayer);
+
+                // Center line-handle has highest hover priority: always show hand cursor when directly over it.
+                if (_lineHandleCenter is { Visibility: Visibility.Visible } && IsPointOverHandle(_lineHandleCenter, mouseDip))
+                {
+                    Mouse.OverrideCursor = Cursors.Hand;
+                    return;
+                }
+
+                bool cursorSet = false;
+                var coord = MouseToCoord(_interactionPlotItem.Plot, mouseDip);
+                int hitIndex = HitTestGate(_interactionPlotItem, coord, mouseDip, out var lineMode);
+
+                if (hitIndex >= 0 && _gates[hitIndex] is LineGate)
+                {
+                    Mouse.OverrideCursor = lineMode switch
+                    {
+                        GateInteractionMode.LineResizeLeft => Cursors.SizeWE,
+                        GateInteractionMode.LineResizeRight => Cursors.SizeWE,
+                        GateInteractionMode.LineMoveAll => Cursors.Hand,
+                        _ => null,
+                    };
+                    cursorSet = Mouse.OverrideCursor != null;
+                }
+
+                if (!cursorSet && _interactionMode == GateInteractionMode.None)
+                {
+                    Mouse.OverrideCursor = null;
+                }
                 return;
+            }
 
             try
             {
                 var coord = MouseToCoord(_interactionPlotItem.Plot, e.GetPosition(dragLayer));
                 if (_interactionMode == GateInteractionMode.Move)
                     ApplyMove(_interactionPlotItem, coord);
+                else if (_interactionMode == GateInteractionMode.LineMoveAll || _interactionMode == GateInteractionMode.LineResizeLeft || _interactionMode == GateInteractionMode.LineResizeRight)
+                    ApplyLineInteraction(_interactionPlotItem, coord);
                 else if (_interactionMode == GateInteractionMode.VertexDrag)
                     ApplyPolygonVertexDrag(_interactionPlotItem, coord);
                 else
@@ -803,12 +1009,33 @@ namespace Worksheet.Views.Support.Gates
             _gateInteractionDirty = false;
         }
 
-        private int HitTestGate(ScottPlot.Coordinates c)
+        private int HitTestGate(PlotItem plotItem, ScottPlot.Coordinates c, Point mouseDip, out GateInteractionMode lineMode)
         {
+            lineMode = GateInteractionMode.None;
             for (int i = _gates.Count - 1; i >= 0; i--)
+            {
+                if (_gates[i] is LineGate lineGate)
+                {
+                    if (HitTestLineGate(plotItem, lineGate, mouseDip, out lineMode))
+                        return i;
+                    continue;
+                }
+
                 if (_gates[i].Contains(c))
                     return i;
+            }
             return -1;
+        }
+
+        private void BeginLineInteraction(PlotItem plotItem, ScottPlot.Coordinates mouseCoord, Point mouseDip, GateInteractionMode mode)
+        {
+            _interactionPlotItem = plotItem;
+            _interactionMode = mode;
+            _activePolygonVertexIndex = -1;
+            _mouseStartCoord = mouseCoord;
+            var gate = _gates[_selectedGateIndex];
+            _gateStartBounds = new GateBounds(gate.XMin, gate.XMax, gate.YMin, gate.YMax);
+            _gateInteractionDirty = false;
         }
 
         private void SelectGate(int index, PlotItem plotItem)
@@ -830,14 +1057,31 @@ namespace Worksheet.Views.Support.Gates
 
         private void ShowHandles()
         {
-            if (_handleTL == null || _handleTR == null || _handleBL == null || _handleBR == null)
+            if (_handleTL == null || _handleTR == null || _handleBL == null || _handleBR == null || _lineHandleLeft == null || _lineHandleRight == null || _lineHandleCenter == null)
                 return;
 
             bool isPolygon = _selectedGateIndex >= 0 && _selectedGateIndex < _gates.Count && _gates[_selectedGateIndex] is PolygonGate;
+            bool isLine = _selectedGateIndex >= 0 && _selectedGateIndex < _gates.Count && _gates[_selectedGateIndex] is LineGate;
             _handleTL.Visibility = isPolygon ? Visibility.Collapsed : Visibility.Visible;
             _handleTR.Visibility = isPolygon ? Visibility.Collapsed : Visibility.Visible;
             _handleBL.Visibility = isPolygon ? Visibility.Collapsed : Visibility.Visible;
             _handleBR.Visibility = isPolygon ? Visibility.Collapsed : Visibility.Visible;
+            if (isLine)
+            {
+                _handleTL.Visibility = Visibility.Collapsed;
+                _handleTR.Visibility = Visibility.Collapsed;
+                _handleBL.Visibility = Visibility.Collapsed;
+                _handleBR.Visibility = Visibility.Collapsed;
+                _lineHandleLeft.Visibility = Visibility.Collapsed;
+                _lineHandleRight.Visibility = Visibility.Collapsed;
+                _lineHandleCenter.Visibility = Visibility.Visible;
+            }
+            else
+            {
+                _lineHandleLeft.Visibility = Visibility.Collapsed;
+                _lineHandleRight.Visibility = Visibility.Collapsed;
+                _lineHandleCenter.Visibility = Visibility.Collapsed;
+            }
 
             if (_ellipseBoundsRect != null)
                 _ellipseBoundsRect.Visibility = Visibility.Collapsed;
@@ -848,12 +1092,15 @@ namespace Worksheet.Views.Support.Gates
 
         private void HideHandles()
         {
-            if (_handleTL == null || _handleTR == null || _handleBL == null || _handleBR == null)
+            if (_handleTL == null || _handleTR == null || _handleBL == null || _handleBR == null || _lineHandleLeft == null || _lineHandleRight == null || _lineHandleCenter == null)
                 return;
             _handleTL.Visibility = Visibility.Collapsed;
             _handleTR.Visibility = Visibility.Collapsed;
             _handleBL.Visibility = Visibility.Collapsed;
             _handleBR.Visibility = Visibility.Collapsed;
+            _lineHandleLeft.Visibility = Visibility.Collapsed;
+            _lineHandleRight.Visibility = Visibility.Collapsed;
+            _lineHandleCenter.Visibility = Visibility.Collapsed;
             if (_ellipseBoundsRect != null)
                 _ellipseBoundsRect.Visibility = Visibility.Collapsed;
             HidePolygonVertexHandles();
@@ -864,13 +1111,26 @@ namespace Worksheet.Views.Support.Gates
             if (_selectedGateIndex < 0 || _selectedGateIndex >= _gates.Count)
                 return;
 
-            if (_handleTL == null || _handleTR == null || _handleBL == null || _handleBR == null)
+            if (_handleTL == null || _handleTR == null || _handleBL == null || _handleBR == null || _lineHandleLeft == null || _lineHandleRight == null || _lineHandleCenter == null)
                 return;
 
             var gate = _gates[_selectedGateIndex];
             if (gate is PolygonGate polygonGate)
             {
                 UpdatePolygonVertexHandles(plotItem, polygonGate);
+                return;
+            }
+
+            if (gate is LineGate)
+            {
+                HidePolygonVertexHandles();
+                if (gate is LineGate lineGate)
+                {
+                    double y = lineGate.YMin + (lineGate.YMax - lineGate.YMin) * lineGate.YFraction;
+                    _lineHandleLeft.Visibility = Visibility.Collapsed;
+                    _lineHandleRight.Visibility = Visibility.Collapsed;
+                    PlaceHandle(plotItem, _lineHandleCenter, (gate.XMin + gate.XMax) / 2.0, y);
+                }
                 return;
             }
 
@@ -881,6 +1141,55 @@ namespace Worksheet.Views.Support.Gates
             PlaceHandle(plotItem, _handleBL, gate.XMin, gate.YMin);
             PlaceHandle(plotItem, _handleBR, gate.XMax, gate.YMin);
             UpdateEllipseBoundsRect(plotItem, gate);
+        }
+
+        private bool HitTestLineGate(PlotItem plotItem, LineGate lineGate, Point mouseDip, out GateInteractionMode mode)
+        {
+            mode = GateInteractionMode.None;
+            var axes = plotItem.Plot.Plot.Axes;
+            var dpi = VisualTreeHelper.GetDpi(plotItem.Plot);
+            double yLineCoord = lineGate.YMin + (lineGate.YMax - lineGate.YMin) * lineGate.YFraction;
+            var leftPx = plotItem.Plot.Plot.GetPixel(new ScottPlot.Coordinates(lineGate.XMin, yLineCoord), axes.Bottom, axes.Left);
+            var rightPx = plotItem.Plot.Plot.GetPixel(new ScottPlot.Coordinates(lineGate.XMax, yLineCoord), axes.Bottom, axes.Left);
+
+            double xLeft = leftPx.X / dpi.DpiScaleX;
+            double xRight = rightPx.X / dpi.DpiScaleX;
+            if (xLeft > xRight)
+                (xLeft, xRight) = (xRight, xLeft);
+
+            double yLine = leftPx.Y / dpi.DpiScaleY;
+
+            if (Math.Abs(mouseDip.X - xLeft) <= 8)
+            {
+                mode = GateInteractionMode.LineResizeLeft;
+                return true;
+            }
+
+            if (Math.Abs(mouseDip.X - xRight) <= 8)
+            {
+                mode = GateInteractionMode.LineResizeRight;
+                return true;
+            }
+
+            if (mouseDip.X >= xLeft - 8 && mouseDip.X <= xRight + 8 && Math.Abs(mouseDip.Y - yLine) <= 8)
+            {
+                mode = GateInteractionMode.None;
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool IsPointOverHandle(FrameworkElement handle, Point p)
+        {
+            double left = Canvas.GetLeft(handle);
+            double top = Canvas.GetTop(handle);
+            if (double.IsNaN(left) || double.IsNaN(top))
+                return false;
+
+            double right = left + handle.Width;
+            double bottom = top + handle.Height;
+            return p.X >= left && p.X <= right && p.Y >= top && p.Y <= bottom;
         }
 
         private void UpdateEllipseBoundsRect(PlotItem plotItem, GateBase gate)
@@ -984,6 +1293,15 @@ namespace Worksheet.Views.Support.Gates
             Canvas.SetTop(handle, dipY - HandleSizeDip / 2);
         }
 
+        private static void DrawPreviewLineRect(Rectangle rect, double left, double top, double width, double height)
+        {
+            Canvas.SetLeft(rect, left);
+            Canvas.SetTop(rect, top);
+            rect.Width = Math.Max(1, width);
+            rect.Height = Math.Max(1, height);
+            rect.Visibility = Visibility.Visible;
+        }
+
         private static ScottPlot.Coordinates MouseToCoord(WpfPlot plot, Point mouseDip)
         {
             var dpi = VisualTreeHelper.GetDpi(plot);
@@ -1008,6 +1326,65 @@ namespace Worksheet.Views.Support.Gates
 
             ClampRect(ref xMin, ref xMax, ref yMin, ref yMax, GetBinCount());
             ReplaceGate(plotItem, _selectedGateIndex, xMin, xMax, yMin, yMax);
+        }
+
+        private void ApplyLineInteraction(PlotItem plotItem, ScottPlot.Coordinates current)
+        {
+            if (_selectedGateIndex < 0 || _selectedGateIndex >= _gates.Count)
+                return;
+
+            if (_gates[_selectedGateIndex] is not LineGate lineGate)
+                return;
+
+            int bins = GetBinCount();
+            double xMin = _gateStartBounds.XMin;
+            double xMax = _gateStartBounds.XMax;
+
+            switch (_interactionMode)
+            {
+                case GateInteractionMode.LineResizeLeft:
+                    xMin = Math.Clamp(current.X, 0, xMax - MinLineGateWidthBins);
+                    break;
+                case GateInteractionMode.LineResizeRight:
+                    xMax = Math.Clamp(current.X, xMin + MinLineGateWidthBins, bins);
+                    break;
+                case GateInteractionMode.LineMoveAll:
+                {
+                    double dx = current.X - _mouseStartCoord.X;
+                    xMin = _gateStartBounds.XMin + dx;
+                    xMax = _gateStartBounds.XMax + dx;
+                    if (xMin < 0)
+                    {
+                        xMax -= xMin;
+                        xMin = 0;
+                    }
+                    if (xMax > bins)
+                    {
+                        double d = xMax - bins;
+                        xMin -= d;
+                        xMax = bins;
+                    }
+                    if (xMax - xMin < MinLineGateWidthBins)
+                        xMax = Math.Clamp(xMin + MinLineGateWidthBins, 0, bins);
+
+                    var limits = plotItem.Plot.Plot.Axes.GetLimits();
+                    double yMinAxis = 0;
+                    double yMaxAxis = Math.Max(1, limits.Top);
+                    double yVal = Math.Clamp(current.Y, yMinAxis, yMaxAxis);
+                    double frac = (yVal - yMinAxis) / Math.Max(1e-9, yMaxAxis - yMinAxis);
+                    lineGate.SetYFraction(Math.Clamp(frac, 0, 1));
+                    lineGate.SetBounds(xMin, xMax, yMinAxis, yMaxAxis);
+                    lineGate.RebuildPlottable(plotItem.Plot);
+                    MoveGatePlottablesToTop(plotItem, lineGate);
+                    UpdateHandlePositions(plotItem);
+                    _gateInteractionDirty = true;
+                    plotItem.Plot.Refresh();
+                    return;
+                }
+            }
+
+            var lim = plotItem.Plot.Plot.Axes.GetLimits();
+            ReplaceLineGate(plotItem, _selectedGateIndex, xMin, xMax, 0, Math.Max(1, lim.Top), lineGate.YFraction);
         }
 
         private void ApplyResize(PlotItem plotItem, ScottPlot.Coordinates current)
@@ -1053,15 +1430,39 @@ namespace Worksheet.Views.Support.Gates
             gate.SetBounds(xMin, xMax, yMin, yMax);
             gate.RebuildPlottable(plotItem.Plot);
 
-            if (gate.Plottable != null)
-                plotItem.Plot.Plot.MoveToTop(gate.Plottable);
-            if (gate.LabelPlottable != null)
-                plotItem.Plot.Plot.MoveToTop(gate.LabelPlottable);
+            MoveGatePlottablesToTop(plotItem, gate);
 
             UpdateHandlePositions(plotItem);
             // debug mask overlay removed
             _gateInteractionDirty = true;
             plotItem.Plot.Refresh();
+        }
+
+        private void ReplaceLineGate(PlotItem plotItem, int index, double xMin, double xMax, double yMin, double yMax, double yFrac)
+        {
+            if (_gates[index] is not LineGate lineGate)
+            {
+                ReplaceGate(plotItem, index, xMin, xMax, yMin, yMax);
+                return;
+            }
+
+            lineGate.SetBounds(xMin, xMax, yMin, yMax);
+            lineGate.SetYFraction(yFrac);
+            lineGate.RebuildPlottable(plotItem.Plot);
+            MoveGatePlottablesToTop(plotItem, lineGate);
+            UpdateHandlePositions(plotItem);
+            _gateInteractionDirty = true;
+            plotItem.Plot.Refresh();
+        }
+
+        private static void MoveGatePlottablesToTop(PlotItem plotItem, GateBase gate)
+        {
+            if (gate.Plottable != null)
+                plotItem.Plot.Plot.MoveToTop(gate.Plottable);
+            foreach (var aux in gate.AuxiliaryPlottables)
+                plotItem.Plot.Plot.MoveToTop(aux);
+            if (gate.LabelPlottable != null)
+                plotItem.Plot.Plot.MoveToTop(gate.LabelPlottable);
         }
 
         private void ApplyPolygonVertexDrag(PlotItem plotItem, ScottPlot.Coordinates current)
@@ -1084,6 +1485,8 @@ namespace Worksheet.Views.Support.Gates
 
             if (polygonGate.Plottable != null)
                 plotItem.Plot.Plot.MoveToTop(polygonGate.Plottable);
+            foreach (var aux in polygonGate.AuxiliaryPlottables)
+                plotItem.Plot.Plot.MoveToTop(aux);
             if (polygonGate.LabelPlottable != null)
                 plotItem.Plot.Plot.MoveToTop(polygonGate.LabelPlottable);
 
@@ -1124,6 +1527,33 @@ namespace Worksheet.Views.Support.Gates
             {
                 AppLog.Exception(ex, "GateVisualManager.FinalizeGateInteraction");
             }
+        }
+
+        private void SyncLineGatesToCurrentYAxis(PlotItem plotItem)
+        {
+            if (_gates.Count == 0)
+                return;
+
+            var limits = plotItem.Plot.Plot.Axes.GetLimits();
+            bool anyChanged = false;
+            foreach (var gate in _gates)
+            {
+                if (gate is not LineGate lineGate)
+                    continue;
+
+                double yMin = 0;
+                double yMax = Math.Max(1, limits.Top);
+                if (Math.Abs(lineGate.YMin - yMin) < 1e-9 && Math.Abs(lineGate.YMax - yMax) < 1e-9)
+                    continue;
+
+                lineGate.SetBounds(lineGate.XMin, lineGate.XMax, yMin, yMax);
+                lineGate.RebuildPlottable(plotItem.Plot);
+                MoveGatePlottablesToTop(plotItem, lineGate);
+                anyChanged = true;
+            }
+
+            if (anyChanged)
+                plotItem.Plot.Refresh();
         }
 
         private void StartPolygonVertexDrag(PlotItem plotItem, int vertexIndex, MouseButtonEventArgs e)
@@ -1225,7 +1655,10 @@ namespace Worksheet.Views.Support.Gates
                 }
                 else
                 {
-                    geometry = GateGeometry.FromBinRectangle(gate.XMin, gate.XMax, gate.YMin, gate.YMax, bins);
+                    if (gate is LineGate)
+                        geometry = GateGeometry.FromBinRectangle(gate.XMin, gate.XMax, 0, bins, bins);
+                    else
+                        geometry = GateGeometry.FromBinRectangle(gate.XMin, gate.XMax, gate.YMin, gate.YMax, bins);
                 }
 
                 sink(new GateSettings

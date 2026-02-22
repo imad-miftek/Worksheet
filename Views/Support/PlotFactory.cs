@@ -163,7 +163,7 @@ namespace Worksheet.Views.Support
         {
             return plotType switch
             {
-                PlotType.Histogram => new HistogramPlotView(_histogramContextMenu, _axisFactory, settings),
+                PlotType.Histogram => new HistogramPlotView(_histogramContextMenu, _axisFactory, settings, new GateVisualManager()),
                 PlotType.Pseudocolor => new PseudocolorPlotView(_pseudocolorContextMenu, settings, new GateVisualManager()),
                 PlotType.SpectralRibbon => new SpectralRibbonPlotView(_spectralRibbonContextMenu, settings),
                 PlotType.Oscilloscope => new OscilloscopePlotView(_oscilloscopeContextMenu, settings),
