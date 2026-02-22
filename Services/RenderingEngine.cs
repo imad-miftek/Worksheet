@@ -58,9 +58,10 @@ namespace Worksheet.Services
                         {
                             target.PlotView.Render(target.Plot, data);
                         }
-                        catch
+                        catch (Exception ex)
                         {
                             // Avoid crashing the dispatcher thread. Mark as rendered to prevent tight exception loops.
+                            AppLog.Exception(ex, $"RenderingEngine.Render plotId={target.PlotId} view={target.PlotView.GetType().Name}");
                         }
                         finally
                         {

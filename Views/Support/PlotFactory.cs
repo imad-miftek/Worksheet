@@ -67,9 +67,10 @@ namespace Worksheet.Views.Support
             {
                 plotView.Configure(plot);
             }
-            catch
+            catch (Exception ex)
             {
                 // Avoid crashing if a view's Configure() has an issue.
+                Worksheet.Services.AppLog.Exception(ex, $"PlotFactory.Configure plotType={plotType} plotId={settings.Id}");
             }
 
             return plot;
@@ -86,9 +87,10 @@ namespace Worksheet.Views.Support
             {
                 plotView.Configure(plot);
             }
-            catch
+            catch (Exception ex)
             {
                 // Avoid crashing if a view's Configure() has an issue.
+                Worksheet.Services.AppLog.Exception(ex, $"PlotFactory.Configure plotType={plotType} plotId={settings.Id} axisScale={axisScale}");
             }
 
             return plot;

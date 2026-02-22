@@ -56,6 +56,19 @@ namespace Worksheet.Views.PlotViews
             });
         }
 
+        public override void Clear(WpfPlot plot)
+        {
+            RenderOnce(plot, () =>
+            {
+                // Remove the bar plottable so the histogram is visually empty immediately.
+                plot.Plot.Clear<ScottPlot.Plottables.BarPlot>();
+                _barPlot = null;
+
+                // Keep axis configuration, just reset Y range to a sane default.
+                plot.Plot.Axes.SetLimitsY(0, 10);
+            });
+        }
+
         public void UpdateAxisScale(PlotItem plotItem, AxisScaleType newScale)
         {
             Settings.XAxisScaleType = newScale;

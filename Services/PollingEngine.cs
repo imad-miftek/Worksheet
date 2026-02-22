@@ -44,7 +44,14 @@ namespace Worksheet.Services
 
             try
             {
-                Tick();
+                try
+                {
+                    Tick();
+                }
+                catch (Exception ex)
+                {
+                    AppLog.Exception(ex, $"{GetType().Name}.Tick()");
+                }
             }
             finally
             {

@@ -20,6 +20,12 @@ namespace Worksheet.Views.PlotViews
         public abstract void Configure(WpfPlot plot);
         public abstract void Render(WpfPlot plot, ProcessedPlotData data);
 
+        // Clear the visual state of the plot without relying on a new ProcessedPlotData render cycle.
+        // Used when memory is cleared while streaming is stopped (no new frames will arrive).
+        public virtual void Clear(WpfPlot plot)
+        {
+        }
+
         public void AttachContextMenu(PlotItem plotItem)
         {
             ContextMenu.Attach(plotItem, this);
@@ -40,7 +46,7 @@ namespace Worksheet.Views.PlotViews
                 catch
                 {
                     // Prevent a bad render path from crashing the UI thread.
-                    return;
+                    // Do not return here: plot.Refresh() must still run so the control can repaint.
                 }
             }
             finally

@@ -19,6 +19,7 @@ namespace Worksheet.Views
         private readonly ThumbManager _thumbManager;
         private readonly DragHandler _dragHandler;
         private readonly ViewportSession _viewportSession;
+        private readonly List<PlotItem> _plotItems = new();
 
         private double _snapSize = 0;
 
@@ -65,6 +66,8 @@ namespace Worksheet.Views
 
             InitializeComponent();
             UpdateGridBackground();
+
+            _viewportSession.MemoryCleared += (_, _) => ClearAllPlotVisuals();
 
             // Click on empty space deselects all items
             WorksheetGridContainer.MouseLeftButtonDown += (s, e) =>
@@ -119,18 +122,30 @@ namespace Worksheet.Views
 
         public void AddPlot(PlotType plotType)
         {
-            // Create the plot using PlotFactory defaults
-            var plot = _plotFactory.CreatePlot(plotType, out var plotView);
-
-            AddPlotToWorksheet(plot, plotView, plotView?.Settings);
+            try
+            {
+                // Create the plot using PlotFactory defaults
+                var plot = _plotFactory.CreatePlot(plotType, out var plotView);
+                AddPlotToWorksheet(plot, plotView, plotView?.Settings);
+            }
+            catch (Exception ex)
+            {
+                Worksheet.Services.AppLog.Exception(ex, $"WorksheetGrid.AddPlot plotType={plotType}");
+            }
         }
 
         public void AddPlot(PlotType plotType, AxisScaleType axisScale)
         {
-            // Create the plot using PlotFactory defaults
-            var plot = _plotFactory.CreatePlot(plotType, axisScale, out var plotView);
-
-            AddPlotToWorksheet(plot, plotView, plotView?.Settings);
+            try
+            {
+                // Create the plot using PlotFactory defaults
+                var plot = _plotFactory.CreatePlot(plotType, axisScale, out var plotView);
+                AddPlotToWorksheet(plot, plotView, plotView?.Settings);
+            }
+            catch (Exception ex)
+            {
+                Worksheet.Services.AppLog.Exception(ex, $"WorksheetGrid.AddPlot plotType={plotType} axisScale={axisScale}");
+            }
         }
 
         public void AddHistogramPlotsForAllChannels()
@@ -330,6 +345,8 @@ namespace Worksheet.Views
 
         private void AddPlotToWorksheetAt(ScottPlot.WPF.WpfPlot plot, PlotView? plotView, PlotSettings? settings, double x, double y)
         {
+            try
+            {
             var worksheetWidth = WorksheetScrollViewer.ViewportWidth > 0
                 ? WorksheetScrollViewer.ViewportWidth
                 : 800;
@@ -353,6 +370,7 @@ namespace Worksheet.Views
                     }
 
                     _selectionManager.Unregister(item);
+                    _plotItems.Remove(item);
                     WorksheetGridContainer.Children.Remove(item.Container);
                 }
             };
@@ -370,11 +388,19 @@ namespace Worksheet.Views
             }
 
             WorksheetGridContainer.Children.Add(container.Container);
+            _plotItems.Add(plotItem);
             _selectionManager.Select(plotItem);
+            }
+            catch (Exception ex)
+            {
+                Worksheet.Services.AppLog.Exception(ex, $"WorksheetGrid.AddPlotToWorksheetAt plotType={settings?.PlotType} plotId={settings?.Id}");
+            }
         }
 
         private void AddPlotToWorksheet(ScottPlot.WPF.WpfPlot plot, PlotView? plotView, PlotSettings? settings)
         {
+            try
+            {
             // Create the container structure (use ActualWidth for grid layout)
             var worksheetWidth = WorksheetScrollViewer.ViewportWidth > 0
                 ? WorksheetScrollViewer.ViewportWidth
@@ -398,6 +424,7 @@ namespace Worksheet.Views
                     }
 
                     _selectionManager.Unregister(item);
+                    _plotItems.Remove(item);
                     WorksheetGridContainer.Children.Remove(item.Container);
                 }
             };
@@ -421,7 +448,13 @@ namespace Worksheet.Views
 
             // Add to worksheet and select
             WorksheetGridContainer.Children.Add(container.Container);
+            _plotItems.Add(plotItem);
             _selectionManager.Select(plotItem);
+            }
+            catch (Exception ex)
+            {
+                Worksheet.Services.AppLog.Exception(ex, $"WorksheetGrid.AddPlotToWorksheet plotType={settings?.PlotType} plotId={settings?.Id}");
+            }
         }
 
         public void SetStreamingEnabled(bool enabled)
@@ -437,6 +470,22 @@ namespace Worksheet.Views
         public void ClearMemory()
         {
             _viewportSession.ClearMemory();
+        }
+
+        private void ClearAllPlotVisuals()
+        {
+            // Clear each plot view directly. This does not depend on the processing/rendering pipeline.
+            foreach (var item in _plotItems.ToList())
+            {
+                try
+                {
+                    item.PlotView?.Clear(item.Plot);
+                }
+                catch
+                {
+                    // Clearing should not crash the UI.
+                }
+            }
         }
     }
 }

@@ -28,8 +28,9 @@ namespace Worksheet.Services
                     _ => throw new ArgumentOutOfRangeException(nameof(settings.PlotType), settings.PlotType, "Unsupported plot type.")
                 };
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                AppLog.Exception(ex, $"DataProcessor.Process plotType={settings.PlotType} plotId={settings.Id} x={settings.XFeature} y={settings.YFeature}");
                 return null;
             }
         }
@@ -125,6 +126,7 @@ namespace Worksheet.Services
             int yCount = _dataSource.GetVisibleLength(settings.YFeature);
             int count = Math.Min(xCount, yCount);
             int bins = settings.GetBinCount();
+            bool isEmpty = count <= 0;
 
             var (xScale, xOffset, xIsLog, xEffMin, xEffMax) = BuildBinTransform(settings, settings.XAxisScaleType);
             var (yScale, yOffset, yIsLog, yEffMin, yEffMax) = BuildBinTransform(settings, settings.YAxisScaleType);
@@ -154,18 +156,24 @@ namespace Worksheet.Services
                 for (int x = 0; x < bins; x++)
                     for (int y = 0; y < bins; y++)
                     {
-                        double v = flat[x * bins + y] / max;
-                        counts[x, y] = v == 0 ? double.NaN : v;
+                        double raw = flat[x * bins + y];
+                        if (raw == 0)
+                        {
+                            counts[x, y] = double.NaN; // 0 => transparent
+                            continue;
+                        }
+
+                        counts[x, y] = raw / max;
                     }
             }
             else
             {
                 for (int x = 0; x < bins; x++)
                     for (int y = 0; y < bins; y++)
-                        counts[x, y] = double.NaN;
+                        counts[x, y] = 0;
             }
 
-            return new HeatmapProcessedData(settings.Id, counts);
+            return new HeatmapProcessedData(settings.Id, counts, isEmpty);
         }
 
         private ProcessedPlotData ProcessSpectralRibbon(PlotSettings settings)
@@ -177,9 +185,7 @@ namespace Worksheet.Services
             if (channelCount == 0)
             {
                 var emptyData = new double[bins, 1];
-                for (int i = 0; i < bins; i++)
-                    emptyData[i, 0] = double.NaN;
-                return new SpectralRibbonProcessedData(settings.Id, emptyData, Array.Empty<string>());
+                return new SpectralRibbonProcessedData(settings.Id, emptyData, Array.Empty<string>(), isEmpty: true);
             }
 
             var (scale, offset, isLog, effMin, effMax) = BuildBinTransform(settings, settings.YAxisScaleType);
@@ -214,8 +220,14 @@ namespace Worksheet.Services
                 {
                     for (int x = 0; x < channelCount; x++)
                     {
-                        double v = counts[y, x] / max;
-                        counts[y, x] = v == 0 ? double.NaN : v;
+                        double raw = counts[y, x];
+                        if (raw == 0)
+                        {
+                            counts[y, x] = double.NaN; // 0 => transparent
+                            continue;
+                        }
+
+                        counts[y, x] = raw / max;
                     }
                 });
             }
@@ -223,10 +235,10 @@ namespace Worksheet.Services
             {
                 for (int y = 0; y < bins; y++)
                     for (int x = 0; x < channelCount; x++)
-                        counts[y, x] = double.NaN;
+                        counts[y, x] = 0;
             }
 
-            return new SpectralRibbonProcessedData(settings.Id, counts, Array.Empty<string>());
+            return new SpectralRibbonProcessedData(settings.Id, counts, Array.Empty<string>(), isEmpty: max <= 0);
         }
     }
 }

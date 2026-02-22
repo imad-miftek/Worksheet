@@ -14,6 +14,9 @@ namespace Worksheet.Views.PlotViews
         private ScottPlot.Plottables.Heatmap? _heatmap;
         private readonly ScottPlot.IColormap _colormap = CreateColormap();
         private SpectralConfigSnapshot? _lastAppliedConfig;
+        private double[,]? _emptyIntensities;
+        private int _emptyBins;
+        private int _emptyChannelCount;
 
         public SpectralRibbonPlotView(SpectralRibbonPlotContextMenu contextMenu, PlotSettings settings)
             : base(contextMenu, settings)
@@ -48,7 +51,46 @@ namespace Worksheet.Views.PlotViews
                 if (_heatmap == null)
                     return;
 
+                if (spectralData.IsEmpty)
+                {
+                    _heatmap.Opacity = 0;
+                    return;
+                }
+
+                _heatmap.Opacity = 1;
                 _heatmap.Intensities = spectralData.Data;
+                _heatmap.Update();
+            });
+        }
+
+        public override void Clear(WpfPlot plot)
+        {
+            RenderOnce(plot, () =>
+            {
+                int bins = Settings.GetBinCount();
+                int channelCount = FeatureSelectionStrategy.ChannelNames.Count;
+                if (channelCount <= 0)
+                    channelCount = 1;
+
+                var empty = GetEmptyIntensities(bins, channelCount);
+
+                if (_heatmap != null)
+                {
+                    bool stillInPlot = plot.Plot.GetPlottables<ScottPlot.Plottables.Heatmap>().Contains(_heatmap);
+                    if (!stillInPlot)
+                        _heatmap = null;
+                }
+
+                if (_heatmap == null)
+                    EnsureHeatmap(plot, empty, bins, channelCount);
+
+                if (_heatmap == null)
+                    return;
+
+                _heatmap.Opacity = 0;
+                _heatmap.NaNCellColor = ScottPlot.Colors.Transparent;
+                _heatmap.Extent = new ScottPlot.CoordinateRect(0.5, channelCount - 0.5, 0.5, bins - 0.5);
+                _heatmap.Intensities = empty;
                 _heatmap.Update();
             });
         }
@@ -75,6 +117,21 @@ namespace Worksheet.Views.PlotViews
             _heatmap.Smooth = false;
             _heatmap.Extent = new ScottPlot.CoordinateRect(0.5, channelCount - 0.5, 0.5, bins - 0.5);
             _heatmap.Colormap = _colormap;
+            _heatmap.NaNCellColor = ScottPlot.Colors.Transparent;
+            _heatmap.Opacity = 1;
+        }
+
+        private double[,] GetEmptyIntensities(int bins, int channelCount)
+        {
+            if (_emptyIntensities != null && _emptyBins == bins && _emptyChannelCount == channelCount)
+                return _emptyIntensities;
+
+            var empty = new double[bins, channelCount];
+
+            _emptyIntensities = empty;
+            _emptyBins = bins;
+            _emptyChannelCount = channelCount;
+            return empty;
         }
 
         private void ApplyAxesAndTicks(WpfPlot plot, int bins, int channelCount, bool resetLimits)

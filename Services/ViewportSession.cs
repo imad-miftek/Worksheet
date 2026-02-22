@@ -7,6 +7,7 @@ namespace Worksheet.Services
 {
     public class ViewportSession : IDisposable
     {
+        private readonly Dispatcher _dispatcher;
         private readonly DataStore _dataStore;
         private readonly DataSource _dataSource;
         private readonly DataProcessor _dataProcessor;
@@ -16,6 +17,7 @@ namespace Worksheet.Services
 
         public ViewportSession(Dispatcher dispatcher, TimeSpan processingInterval, TimeSpan renderingInterval)
         {
+            _dispatcher = dispatcher;
             _dataStore = new DataStore();
             _dataSource = new DataSource();
             _dataProcessor = new DataProcessor(_dataSource);
@@ -23,6 +25,8 @@ namespace Worksheet.Services
             _renderingEngine = new RenderingEngine(_dataStore, dispatcher, renderingInterval);
             _featureSelection = new FeatureSelectionStrategy();
         }
+
+        public event EventHandler? MemoryCleared;
 
         public DataStore DataStore => _dataStore;
         public FeatureSelectionStrategy FeatureSelection => _featureSelection;
@@ -71,6 +75,12 @@ namespace Worksheet.Services
         public void ClearMemory()
         {
             _dataProcessor.ClearMemory();
+
+            // Clear visuals immediately on the UI thread without relying on a new render cycle.
+            if (_dispatcher.CheckAccess())
+                MemoryCleared?.Invoke(this, EventArgs.Empty);
+            else
+                _dispatcher.BeginInvoke(() => MemoryCleared?.Invoke(this, EventArgs.Empty));
         }
     }
 }
