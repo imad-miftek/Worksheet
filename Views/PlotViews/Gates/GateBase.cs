@@ -26,6 +26,7 @@ namespace Worksheet.Views.PlotViews.Gates
         public double YMax { get; private set; }
 
         public ScottPlot.Plottables.Polygon? Plottable { get; private set; }
+        public ScottPlot.IPlottable? LabelPlottable { get; private set; }
 
         public bool Contains(ScottPlot.Coordinates c) =>
             c.X >= XMin && c.X <= XMax && c.Y >= YMin && c.Y <= YMax;
@@ -51,6 +52,17 @@ namespace Worksheet.Views.PlotViews.Gates
                 }
             }
 
+            if (LabelPlottable != null)
+            {
+                try
+                {
+                    plot.Plot.Remove(LabelPlottable);
+                }
+                catch
+                {
+                }
+            }
+
             ScottPlot.Plottables.Polygon gate;
             var coords = BuildCoordinates();
             try
@@ -67,6 +79,20 @@ namespace Worksheet.Views.PlotViews.Gates
             gate.LineColor = _style.LineColor;
             gate.FillColor = _style.FillColor;
             Plottable = gate;
+
+            try
+            {
+                var label = plot.Plot.Add.Text(Name, (XMin + XMax) / 2, (YMin + YMax) / 2);
+                label.Alignment = ScottPlot.Alignment.MiddleCenter;
+                label.LabelFontColor = ScottPlot.Colors.Black;
+                label.LabelStyle.FontSize += 2;
+                label.LabelStyle.Bold = true;
+                LabelPlottable = label;
+            }
+            catch
+            {
+                LabelPlottable = null;
+            }
         }
 
         protected abstract ScottPlot.Coordinates[] BuildCoordinates();

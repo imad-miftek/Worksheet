@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -291,10 +292,13 @@ namespace Worksheet.Views.Support.Gates
             ClampRect(ref xMin, ref xMax, ref yMin, ref yMax, bins);
 
             var gateId = Guid.NewGuid();
-            var gate = new RectangleGate(gateId, name: "", xMin, xMax, yMin, yMax, GateStyle.DefaultRectangle);
+            string gateName = GenerateNextGateName(_gates.Select(g => g.Name));
+            var gate = new RectangleGate(gateId, gateName, xMin, xMax, yMin, yMax, GateStyle.DefaultRectangle);
             gate.RebuildPlottable(plot);
             if (gate.Plottable != null)
                 plot.Plot.MoveToTop(gate.Plottable);
+            if (gate.LabelPlottable != null)
+                plot.Plot.MoveToTop(gate.LabelPlottable);
 
             _gates.Add(gate);
             SelectGate(_gates.Count - 1, plotItem);
@@ -617,6 +621,8 @@ namespace Worksheet.Views.Support.Gates
 
             if (gate.Plottable != null)
                 plotItem.Plot.Plot.MoveToTop(gate.Plottable);
+            if (gate.LabelPlottable != null)
+                plotItem.Plot.Plot.MoveToTop(gate.LabelPlottable);
 
             UpdateHandlePositions(plotItem);
             // debug mask overlay removed
@@ -719,6 +725,63 @@ namespace Worksheet.Views.Support.Gates
             {
                 AppLog.Exception(ex, "GateVisualManager.EmitGateUpsert");
             }
+        }
+
+        private static string GenerateNextGateName(IEnumerable<string> existingNames)
+        {
+            int maxIndex = -1;
+            foreach (var raw in existingNames)
+            {
+                if (string.IsNullOrWhiteSpace(raw))
+                    continue;
+
+                var letters = new string(raw.Where(char.IsLetter).ToArray()).ToUpperInvariant();
+                if (letters.Length == 0)
+                    continue;
+
+                if (TryParseExcelLabelToIndex(letters, out int idx))
+                    maxIndex = Math.Max(maxIndex, idx);
+            }
+
+            return ExcelIndexToLabel(maxIndex + 1);
+        }
+
+        private static bool TryParseExcelLabelToIndex(string letters, out int index)
+        {
+            index = -1;
+            if (string.IsNullOrWhiteSpace(letters))
+                return false;
+
+            int num = 0;
+            foreach (char c in letters)
+            {
+                if (c < 'A' || c > 'Z')
+                    return false;
+
+                int v = (c - 'A') + 1;
+                num = checked(num * 26 + v);
+            }
+
+            index = num - 1;
+            return index >= 0;
+        }
+
+        private static string ExcelIndexToLabel(int index)
+        {
+            if (index < 0)
+                index = 0;
+
+            int num = index + 1;
+            string letters = "";
+            while (num > 0)
+            {
+                num--;
+                int rem = num % 26;
+                letters = (char)('A' + rem) + letters;
+                num /= 26;
+            }
+
+            return letters;
         }
 
         // Debug mask overlay removed.
