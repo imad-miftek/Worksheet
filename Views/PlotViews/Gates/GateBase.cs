@@ -31,7 +31,7 @@ namespace Worksheet.Views.PlotViews.Gates
         public virtual bool Contains(ScottPlot.Coordinates c) =>
             c.X >= XMin && c.X <= XMax && c.Y >= YMin && c.Y <= YMax;
 
-        public void SetBounds(double xMin, double xMax, double yMin, double yMax)
+        public virtual void SetBounds(double xMin, double xMax, double yMin, double yMax)
         {
             XMin = xMin;
             XMax = xMax;

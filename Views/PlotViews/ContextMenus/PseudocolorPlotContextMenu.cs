@@ -40,8 +40,15 @@ namespace Worksheet.Views.PlotViews.ContextMenus
             };
             ellipseGateItem.Click += (s, e) => pseudocolorView.BeginAddGateEllipse(plotItem);
 
+            var polygonGateItem = new System.Windows.Controls.MenuItem
+            {
+                Header = "Polygon"
+            };
+            polygonGateItem.Click += (s, e) => pseudocolorView.BeginAddGatePolygon(plotItem);
+
             addGateItem.Items.Add(rectangleGateItem);
             addGateItem.Items.Add(ellipseGateItem);
+            addGateItem.Items.Add(polygonGateItem);
 
             var removeSelectedGateItem = new System.Windows.Controls.MenuItem
             {

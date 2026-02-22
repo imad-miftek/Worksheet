@@ -115,6 +115,11 @@ namespace Worksheet.Views.PlotViews
             _gateVisualManager.BeginAddEllipseGate(plotItem);
         }
 
+        internal void BeginAddGatePolygon(PlotItem plotItem)
+        {
+            _gateVisualManager.BeginAddPolygonGate(plotItem);
+        }
+
         internal bool HasSelectedGate() => _gateVisualManager.HasSelectedGate;
 
         internal bool RemoveSelectedGate(PlotItem plotItem) => _gateVisualManager.RemoveSelectedGate(plotItem);
