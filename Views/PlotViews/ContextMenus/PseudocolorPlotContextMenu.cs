@@ -19,7 +19,22 @@ namespace Worksheet.Views.PlotViews.ContextMenus
             if (plotView is not PseudocolorPlotView pseudocolorView)
                 return;
 
+            pseudocolorView.AttachGateInteractions(plotItem);
+
             var contextMenu = new System.Windows.Controls.ContextMenu();
+
+            var addGateItem = new System.Windows.Controls.MenuItem
+            {
+                Header = "Add Gate"
+            };
+
+            var rectangleGateItem = new System.Windows.Controls.MenuItem
+            {
+                Header = "Rectangle"
+            };
+            rectangleGateItem.Click += (s, e) => pseudocolorView.BeginAddGateRectangle(plotItem);
+
+            addGateItem.Items.Add(rectangleGateItem);
 
             var propertiesItem = new System.Windows.Controls.MenuItem
             {
@@ -33,6 +48,7 @@ namespace Worksheet.Views.PlotViews.ContextMenus
             };
             closeItem.Click += (s, e) => plotItem.OnCloseRequested?.Invoke(plotItem);
 
+            contextMenu.Items.Add(addGateItem);
             contextMenu.Items.Add(propertiesItem);
             contextMenu.Items.Add(closeItem);
 

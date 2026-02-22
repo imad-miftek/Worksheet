@@ -10,11 +10,13 @@ namespace Worksheet.Services
     {
         private static readonly object _lock = new();
         private static string? _logDir;
+        private static string _sessionTimestamp = DateTime.UtcNow.ToString("yyyyMMdd_HHmmss");
 
         public static void Initialize(string? logDirectory = null)
         {
             try
             {
+                _sessionTimestamp = DateTime.UtcNow.ToString("yyyyMMdd_HHmmss");
                 _logDir = ResolveLogDirectory(logDirectory);
                 Directory.CreateDirectory(_logDir);
                 Info("AppLog initialized", $"dir={_logDir}");
@@ -59,7 +61,7 @@ namespace Worksheet.Services
                 if (string.IsNullOrWhiteSpace(dir))
                     return;
 
-                string file = Path.Combine(dir, $"{DateTime.UtcNow:yyyyMMdd}.log");
+                string file = Path.Combine(dir, $"{_sessionTimestamp}.log");
                 string line = $"{DateTime.UtcNow:O} [{level}] [T{Thread.CurrentThread.ManagedThreadId}] {message}";
                 if (!string.IsNullOrWhiteSpace(details))
                     line += Environment.NewLine + details;
