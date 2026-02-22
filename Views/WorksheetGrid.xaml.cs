@@ -380,7 +380,10 @@ namespace Worksheet.Views
                                     WorksheetGridContainer, _selectionManager, SnapSize);
 
             if (plotView is PseudocolorPlotView pcView)
+            {
                 pcView.GateSettingsSink = gate => _viewportSession.UpsertGate(gate);
+                pcView.GateRemovedSink = gateId => _viewportSession.RemoveGate(gateId);
+            }
 
             plotView?.AttachContextMenu(plotItem);
             _selectionManager.Register(plotItem, plotItem.OnSelect, plotItem.OnDeselect);
@@ -439,7 +442,10 @@ namespace Worksheet.Views
 
             // Attach plot-specific context menu
             if (plotView is PseudocolorPlotView pcView)
+            {
                 pcView.GateSettingsSink = gate => _viewportSession.UpsertGate(gate);
+                pcView.GateRemovedSink = gateId => _viewportSession.RemoveGate(gateId);
+            }
 
             plotView?.AttachContextMenu(plotItem);
 

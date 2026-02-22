@@ -28,7 +28,7 @@ namespace Worksheet.Views.PlotViews.Gates
         public ScottPlot.Plottables.Polygon? Plottable { get; private set; }
         public ScottPlot.IPlottable? LabelPlottable { get; private set; }
 
-        public bool Contains(ScottPlot.Coordinates c) =>
+        public virtual bool Contains(ScottPlot.Coordinates c) =>
             c.X >= XMin && c.X <= XMax && c.Y >= YMin && c.Y <= YMax;
 
         public void SetBounds(double xMin, double xMax, double yMin, double yMax)

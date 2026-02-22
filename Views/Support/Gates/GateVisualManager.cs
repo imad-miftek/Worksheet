@@ -25,20 +25,24 @@ namespace Worksheet.Views.Support.Gates
         private Func<Guid> _getPlotId = static () => Guid.Empty;
         private Func<PlotType> _getPlotType = static () => PlotType.Pseudocolor;
         private Action<GateSettings>? _gateSettingsSink;
+        private Action<Guid>? _gateRemovedSink;
         private PlotItem? _interactionPlotItem;
         private bool _gateInteractionsAttached;
 
         private Canvas? _gateLayer;
         private Rectangle? _previewRect;
+        private Ellipse? _previewEllipse;
         private bool _isDrawingGate;
         private bool _isDrawDragActive;
         private Point _dragStartDip;
+        private GateType _createGateType = GateType.Rectangle;
 
         private Canvas? _handlesLayer;
         private Rectangle? _handleTL;
         private Rectangle? _handleTR;
         private Rectangle? _handleBL;
         private Rectangle? _handleBR;
+        private Rectangle? _ellipseBoundsRect;
 
         // Debug mask overlay removed (gate stats now align with visuals without needing a footprint overlay).
 
@@ -64,7 +68,8 @@ namespace Worksheet.Views.Support.Gates
             Func<int> getBinCount,
             Func<Guid>? getPlotId = null,
             Func<PlotType>? getPlotType = null,
-            Action<GateSettings>? gateSettingsSink = null)
+            Action<GateSettings>? gateSettingsSink = null,
+            Action<Guid>? gateRemovedSink = null)
         {
             if (_gateInteractionsAttached)
                 return;
@@ -78,6 +83,7 @@ namespace Worksheet.Views.Support.Gates
             _getPlotId = getPlotId ?? _getPlotId;
             _getPlotType = getPlotType ?? _getPlotType;
             _gateSettingsSink = gateSettingsSink;
+            _gateRemovedSink = gateRemovedSink;
 
             EnsureHandlesLayer(plotItem);
 
@@ -99,7 +105,65 @@ namespace Worksheet.Views.Support.Gates
             };
         }
 
+        public bool HasSelectedGate =>
+            _selectedGateIndex >= 0 && _selectedGateIndex < _gates.Count;
+
+        public bool RemoveSelectedGate(PlotItem plotItem)
+        {
+            if (!HasSelectedGate)
+                return false;
+
+            int idx = _selectedGateIndex;
+            var gate = _gates[idx];
+
+            try
+            {
+                if (gate.Plottable != null)
+                    plotItem.Plot.Plot.Remove(gate.Plottable);
+            }
+            catch
+            {
+            }
+
+            try
+            {
+                if (gate.LabelPlottable != null)
+                    plotItem.Plot.Plot.Remove(gate.LabelPlottable);
+            }
+            catch
+            {
+            }
+
+            _gates.RemoveAt(idx);
+            _selectedGateIndex = -1;
+            _interactionMode = GateInteractionMode.None;
+            HideHandles();
+            _gateInteractionDirty = false;
+
+            try
+            {
+                _gateRemovedSink?.Invoke(gate.GateId);
+            }
+            catch (Exception ex)
+            {
+                AppLog.Exception(ex, "GateVisualManager.RemoveSelectedGate");
+            }
+
+            plotItem.Plot.Refresh();
+            return true;
+        }
+
         public void BeginAddRectangleGate(PlotItem plotItem)
+        {
+            BeginAddGate(plotItem, GateType.Rectangle);
+        }
+
+        public void BeginAddEllipseGate(PlotItem plotItem)
+        {
+            BeginAddGate(plotItem, GateType.Ellipse);
+        }
+
+        private void BeginAddGate(PlotItem plotItem, GateType gateType)
         {
             if (plotItem?.Plot == null)
                 return;
@@ -109,19 +173,23 @@ namespace Worksheet.Views.Support.Gates
 
             try
             {
+                _createGateType = gateType;
                 plotItem.Plot.Refresh();
 
                 EnsureGateLayer(plotItem);
-                if (_gateLayer == null || _previewRect == null)
+                if (_gateLayer == null || _previewRect == null || _previewEllipse == null)
                     return;
 
                 _isDrawingGate = true;
                 _isDrawDragActive = false;
                 _gateLayer.IsHitTestVisible = true;
                 _gateLayer.Cursor = Cursors.Cross;
-                _previewRect.Visibility = Visibility.Visible;
+                _previewRect.Visibility = gateType == GateType.Rectangle ? Visibility.Visible : Visibility.Collapsed;
+                _previewEllipse.Visibility = gateType == GateType.Ellipse ? Visibility.Visible : Visibility.Collapsed;
                 _previewRect.Width = 0;
                 _previewRect.Height = 0;
+                _previewEllipse.Width = 0;
+                _previewEllipse.Height = 0;
 
                 _gateLayer.MouseLeftButtonDown += GateLayer_MouseLeftButtonDown;
                 _gateLayer.MouseMove += GateLayer_MouseMove;
@@ -140,7 +208,7 @@ namespace Worksheet.Views.Support.Gates
 
             void GateLayer_MouseLeftButtonDown(object? sender, MouseButtonEventArgs e)
             {
-                if (!_isDrawingGate || _gateLayer == null || _previewRect == null)
+                if (!_isDrawingGate || _gateLayer == null || _previewRect == null || _previewEllipse == null)
                     return;
 
                 _dragStartDip = e.GetPosition(_gateLayer);
@@ -152,7 +220,7 @@ namespace Worksheet.Views.Support.Gates
 
             void GateLayer_MouseMove(object? sender, MouseEventArgs e)
             {
-                if (!_isDrawingGate || _gateLayer == null || _previewRect == null)
+                if (!_isDrawingGate || _gateLayer == null || _previewRect == null || _previewEllipse == null)
                     return;
 
                 if (!_gateLayer.IsMouseCaptured)
@@ -165,7 +233,7 @@ namespace Worksheet.Views.Support.Gates
 
             void GateLayer_MouseLeftButtonUp(object? sender, MouseButtonEventArgs e)
             {
-                if (!_isDrawingGate || _gateLayer == null || _previewRect == null)
+                if (!_isDrawingGate || _gateLayer == null || _previewRect == null || _previewEllipse == null)
                     return;
 
                 if (!_isDrawDragActive || !_gateLayer.IsMouseCaptured)
@@ -176,11 +244,11 @@ namespace Worksheet.Views.Support.Gates
 
                 try
                 {
-                    FinalizeRectangleGate(plotItem, _dragStartDip, end);
+                    FinalizeGate(plotItem, _dragStartDip, end, _createGateType);
                 }
                 catch (Exception ex)
                 {
-                    AppLog.Exception(ex, "GateVisualManager.FinalizeRectangleGate");
+                    AppLog.Exception(ex, $"GateVisualManager.FinalizeGate type={_createGateType}");
                 }
                 finally
                 {
@@ -192,12 +260,13 @@ namespace Worksheet.Views.Support.Gates
 
             void ExitDrawMode()
             {
-                if (_gateLayer == null || _previewRect == null)
+                if (_gateLayer == null || _previewRect == null || _previewEllipse == null)
                     return;
 
                 _isDrawingGate = false;
                 _isDrawDragActive = false;
                 _previewRect.Visibility = Visibility.Collapsed;
+                _previewEllipse.Visibility = Visibility.Collapsed;
                 _gateLayer.IsHitTestVisible = false;
                 _gateLayer.Cursor = null;
 
@@ -208,7 +277,7 @@ namespace Worksheet.Views.Support.Gates
 
             void UpdatePreview(Point start, Point end)
             {
-                if (_previewRect == null)
+                if (_previewRect == null || _previewEllipse == null)
                     return;
 
                 double x = Math.Min(start.X, end.X);
@@ -220,12 +289,17 @@ namespace Worksheet.Views.Support.Gates
                 Canvas.SetTop(_previewRect, y);
                 _previewRect.Width = w;
                 _previewRect.Height = h;
+
+                Canvas.SetLeft(_previewEllipse, x);
+                Canvas.SetTop(_previewEllipse, y);
+                _previewEllipse.Width = w;
+                _previewEllipse.Height = h;
             }
         }
 
         private void EnsureGateLayer(PlotItem plotItem)
         {
-            if (_gateLayer != null && _previewRect != null)
+            if (_gateLayer != null && _previewRect != null && _previewEllipse != null)
                 return;
 
             var overlay = plotItem.PlotContainer?.Overlay;
@@ -261,10 +335,20 @@ namespace Worksheet.Views.Support.Gates
                 IsHitTestVisible = false,
             };
 
+            _previewEllipse = new Ellipse
+            {
+                Stroke = Brushes.Black,
+                StrokeThickness = 1,
+                Fill = Brushes.Transparent,
+                Visibility = Visibility.Collapsed,
+                IsHitTestVisible = false,
+            };
+
             _gateLayer.Children.Add(_previewRect);
+            _gateLayer.Children.Add(_previewEllipse);
         }
 
-        private void FinalizeRectangleGate(PlotItem plotItem, Point startDip, Point endDip)
+        private void FinalizeGate(PlotItem plotItem, Point startDip, Point endDip, GateType gateType)
         {
             double wDip = Math.Abs(endDip.X - startDip.X);
             double hDip = Math.Abs(endDip.Y - startDip.Y);
@@ -293,7 +377,11 @@ namespace Worksheet.Views.Support.Gates
 
             var gateId = Guid.NewGuid();
             string gateName = GenerateNextGateName(_gates.Select(g => g.Name));
-            var gate = new RectangleGate(gateId, gateName, xMin, xMax, yMin, yMax, GateStyle.DefaultRectangle);
+            GateBase gate = gateType switch
+            {
+                GateType.Ellipse => new EllipseGate(gateId, gateName, xMin, xMax, yMin, yMax, GateStyle.DefaultRectangle),
+                _ => new RectangleGate(gateId, gateName, xMin, xMax, yMin, yMax, GateStyle.DefaultRectangle),
+            };
             gate.RebuildPlottable(plot);
             if (gate.Plottable != null)
                 plot.Plot.MoveToTop(gate.Plottable);
@@ -350,6 +438,18 @@ namespace Worksheet.Views.Support.Gates
             _handlesLayer.Children.Add(_handleTR);
             _handlesLayer.Children.Add(_handleBL);
             _handlesLayer.Children.Add(_handleBR);
+
+            _ellipseBoundsRect = new Rectangle
+            {
+                Stroke = Brushes.Black,
+                StrokeThickness = 1,
+                Fill = Brushes.Transparent,
+                StrokeDashArray = new DoubleCollection { 4, 3 },
+                Visibility = Visibility.Collapsed,
+                IsHitTestVisible = false,
+            };
+            Panel.SetZIndex(_ellipseBoundsRect, 0);
+            _handlesLayer.Children.Add(_ellipseBoundsRect);
 
             HideHandles();
         }
@@ -509,6 +609,9 @@ namespace Worksheet.Views.Support.Gates
             _handleTR.Visibility = Visibility.Visible;
             _handleBL.Visibility = Visibility.Visible;
             _handleBR.Visibility = Visibility.Visible;
+
+            if (_selectedGateIndex >= 0 && _selectedGateIndex < _gates.Count && _gates[_selectedGateIndex] is EllipseGate && _ellipseBoundsRect != null)
+                _ellipseBoundsRect.Visibility = Visibility.Visible;
         }
 
         private void HideHandles()
@@ -519,6 +622,8 @@ namespace Worksheet.Views.Support.Gates
             _handleTR.Visibility = Visibility.Collapsed;
             _handleBL.Visibility = Visibility.Collapsed;
             _handleBR.Visibility = Visibility.Collapsed;
+            if (_ellipseBoundsRect != null)
+                _ellipseBoundsRect.Visibility = Visibility.Collapsed;
         }
 
         private void UpdateHandlePositions(PlotItem plotItem)
@@ -535,6 +640,35 @@ namespace Worksheet.Views.Support.Gates
             PlaceHandle(plotItem, _handleTR, gate.XMax, gate.YMax);
             PlaceHandle(plotItem, _handleBL, gate.XMin, gate.YMin);
             PlaceHandle(plotItem, _handleBR, gate.XMax, gate.YMin);
+            UpdateEllipseBoundsRect(plotItem, gate);
+        }
+
+        private void UpdateEllipseBoundsRect(PlotItem plotItem, GateBase gate)
+        {
+            if (_ellipseBoundsRect == null)
+                return;
+
+            if (gate is not EllipseGate)
+            {
+                _ellipseBoundsRect.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            var axes = plotItem.Plot.Plot.Axes;
+            var topLeftPx = plotItem.Plot.Plot.GetPixel(new ScottPlot.Coordinates(gate.XMin, gate.YMax), axes.Bottom, axes.Left);
+            var bottomRightPx = plotItem.Plot.Plot.GetPixel(new ScottPlot.Coordinates(gate.XMax, gate.YMin), axes.Bottom, axes.Left);
+
+            var dpi = VisualTreeHelper.GetDpi(plotItem.Plot);
+            double left = Math.Min(topLeftPx.X, bottomRightPx.X) / dpi.DpiScaleX;
+            double top = Math.Min(topLeftPx.Y, bottomRightPx.Y) / dpi.DpiScaleY;
+            double right = Math.Max(topLeftPx.X, bottomRightPx.X) / dpi.DpiScaleX;
+            double bottom = Math.Max(topLeftPx.Y, bottomRightPx.Y) / dpi.DpiScaleY;
+
+            Canvas.SetLeft(_ellipseBoundsRect, left);
+            Canvas.SetTop(_ellipseBoundsRect, top);
+            _ellipseBoundsRect.Width = Math.Max(0, right - left);
+            _ellipseBoundsRect.Height = Math.Max(0, bottom - top);
+            _ellipseBoundsRect.Visibility = Visibility.Visible;
         }
 
         private static void PlaceHandle(PlotItem plotItem, Rectangle handle, double x, double y)
@@ -709,14 +843,28 @@ namespace Worksheet.Views.Support.Gates
                 var plotId = _getPlotId();
                 var plotType = _getPlotType();
 
-                var geometry = GateGeometry.FromBinRectangle(gate.XMin, gate.XMax, gate.YMin, gate.YMax, bins);
+                GateType gateType = gate is EllipseGate ? GateType.Ellipse : GateType.Rectangle;
+                GateGeometry geometry;
+                if (gateType == GateType.Ellipse)
+                {
+                    double inv = bins > 0 ? 1.0 / bins : 1.0;
+                    double cx = ((gate.XMin + gate.XMax) / 2.0) * inv;
+                    double cy = ((gate.YMin + gate.YMax) / 2.0) * inv;
+                    double rx = ((gate.XMax - gate.XMin) / 2.0) * inv;
+                    double ry = ((gate.YMax - gate.YMin) / 2.0) * inv;
+                    geometry = GateGeometry.Ellipse01(cx, cy, rx, ry, angleDeg: 0);
+                }
+                else
+                {
+                    geometry = GateGeometry.FromBinRectangle(gate.XMin, gate.XMax, gate.YMin, gate.YMax, bins);
+                }
 
                 sink(new GateSettings
                 {
                     GateId = gate.GateId,
                     Name = gate.Name,
                     Plot = new GatePlotRef(plotId, plotType),
-                    GateType = GateType.Rectangle,
+                    GateType = gateType,
                     Geometry = geometry,
                     UpdatedUtc = DateTime.UtcNow,
                 });

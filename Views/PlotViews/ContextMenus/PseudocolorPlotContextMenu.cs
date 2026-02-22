@@ -34,7 +34,21 @@ namespace Worksheet.Views.PlotViews.ContextMenus
             };
             rectangleGateItem.Click += (s, e) => pseudocolorView.BeginAddGateRectangle(plotItem);
 
+            var ellipseGateItem = new System.Windows.Controls.MenuItem
+            {
+                Header = "Ellipse"
+            };
+            ellipseGateItem.Click += (s, e) => pseudocolorView.BeginAddGateEllipse(plotItem);
+
             addGateItem.Items.Add(rectangleGateItem);
+            addGateItem.Items.Add(ellipseGateItem);
+
+            var removeSelectedGateItem = new System.Windows.Controls.MenuItem
+            {
+                Header = "Remove Selected Gate",
+                IsEnabled = false
+            };
+            removeSelectedGateItem.Click += (s, e) => pseudocolorView.RemoveSelectedGate(plotItem);
 
             var propertiesItem = new System.Windows.Controls.MenuItem
             {
@@ -48,7 +62,13 @@ namespace Worksheet.Views.PlotViews.ContextMenus
             };
             closeItem.Click += (s, e) => plotItem.OnCloseRequested?.Invoke(plotItem);
 
+            contextMenu.Opened += (s, e) =>
+            {
+                removeSelectedGateItem.IsEnabled = pseudocolorView.HasSelectedGate();
+            };
+
             contextMenu.Items.Add(addGateItem);
+            contextMenu.Items.Add(removeSelectedGateItem);
             contextMenu.Items.Add(propertiesItem);
             contextMenu.Items.Add(closeItem);
 

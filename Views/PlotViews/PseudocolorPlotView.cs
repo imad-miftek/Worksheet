@@ -21,6 +21,7 @@ namespace Worksheet.Views.PlotViews
         private int _emptyBins;
 
         public Action<GateSettings>? GateSettingsSink { get; set; }
+        public Action<Guid>? GateRemovedSink { get; set; }
 
         public PseudocolorPlotView(
             PseudocolorPlotContextMenu contextMenu,
@@ -100,13 +101,23 @@ namespace Worksheet.Views.PlotViews
                 () => Settings.GetBinCount(),
                 () => Settings.Id,
                 () => Settings.PlotType,
-                GateSettingsSink);
+                GateSettingsSink,
+                GateRemovedSink);
         }
 
         internal void BeginAddGateRectangle(PlotItem plotItem)
         {
             _gateVisualManager.BeginAddRectangleGate(plotItem);
         }
+
+        internal void BeginAddGateEllipse(PlotItem plotItem)
+        {
+            _gateVisualManager.BeginAddEllipseGate(plotItem);
+        }
+
+        internal bool HasSelectedGate() => _gateVisualManager.HasSelectedGate;
+
+        internal bool RemoveSelectedGate(PlotItem plotItem) => _gateVisualManager.RemoveSelectedGate(plotItem);
 
         private void EnsureHeatmap(WpfPlot plot, double[,] initialData)
         {
