@@ -6,7 +6,7 @@ using Worksheet.Models.Data;
 using Worksheet.Services;
 using Worksheet.Views.PlotViews.Axes;
 using Worksheet.Views.PlotViews.ContextMenus;
-using Worksheet.Views.PlotViews.Gates;
+using Worksheet.Views.Support.Gates;
 
 namespace Worksheet.Views.PlotViews
 {
@@ -14,7 +14,7 @@ namespace Worksheet.Views.PlotViews
     {
         private ScottPlot.Plottables.Heatmap? _heatmap;
         private readonly ScottPlot.IColormap _colormap = CreateColormap();
-        private readonly IGateVisualManager _gateVisualManager;
+        private readonly GateVisualManager _gateVisualManager;
         private PlotConfigSnapshot? _lastAppliedConfig;
         private double[,]? _emptyIntensities;
         private int _emptyBins;
@@ -22,7 +22,7 @@ namespace Worksheet.Views.PlotViews
         public PseudocolorPlotView(
             PseudocolorPlotContextMenu contextMenu,
             PlotSettings settings,
-            IGateVisualManager gateVisualManager)
+            GateVisualManager gateVisualManager)
             : base(contextMenu, settings)
         {
             _gateVisualManager = gateVisualManager;

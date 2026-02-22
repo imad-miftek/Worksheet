@@ -3,7 +3,7 @@ using System.Threading;
 
 namespace Worksheet.Services
 {
-    public abstract class PollingEngine : UpdateEngine
+    public abstract class PollingEngine : IDisposable
     {
         private readonly TimeSpan _interval;
         private Timer? _timer;
@@ -14,9 +14,9 @@ namespace Worksheet.Services
             _interval = interval;
         }
 
-        public override bool IsRunning => _timer != null;
+        public bool IsRunning => _timer != null;
 
-        public override void Start()
+        public void Start()
         {
             if (_timer != null)
                 return;
@@ -24,13 +24,13 @@ namespace Worksheet.Services
             _timer = new Timer(_ => SafeTick(), null, _interval, _interval);
         }
 
-        public override void Stop()
+        public void Stop()
         {
             _timer?.Dispose();
             _timer = null;
         }
 
-        public override void Dispose()
+        public void Dispose()
         {
             Stop();
         }

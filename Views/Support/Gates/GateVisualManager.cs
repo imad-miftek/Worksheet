@@ -8,10 +8,11 @@ using System.Windows.Shapes;
 using ScottPlot.WPF;
 using Worksheet.Models;
 using Worksheet.Services;
+using Worksheet.Views.PlotViews.Gates;
 
-namespace Worksheet.Views.PlotViews.Gates
+namespace Worksheet.Views.Support.Gates
 {
-    public sealed class GateVisualManager : IGateVisualManager
+    public sealed class GateVisualManager
     {
         private const double MinGateSizeBins = 1;
         private const double HandleSizeDip = 6;
