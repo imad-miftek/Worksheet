@@ -1,9 +1,11 @@
+using System;
+
 namespace Worksheet.Views.PlotViews.Gates
 {
     public sealed class RectangleGate : GateBase
     {
-        public RectangleGate(double xMin, double xMax, double yMin, double yMax, GateStyle style)
-            : base(xMin, xMax, yMin, yMax, style)
+        public RectangleGate(Guid gateId, string name, double xMin, double xMax, double yMin, double yMax, GateStyle style)
+            : base(gateId, name, xMin, xMax, yMin, yMax, style)
         {
         }
 

@@ -12,6 +12,8 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
 using System.Windows.Shapes;
+using System.Collections.ObjectModel;
+using Worksheet.Models.Gates;
 
 namespace Worksheet.Views
 {
@@ -23,9 +25,12 @@ namespace Worksheet.Views
         public event EventHandler? StartStreamingClicked;
         public event EventHandler? StopStreamingClicked;
 
+        public ObservableCollection<GateStatsDisplayRow> GateStatsRows { get; } = new();
+
         public Sidebar()
         {
             InitializeComponent();
+            DataContext = this;
         }
 
         private void StartStreamingButton_Click(object sender, RoutedEventArgs e)
@@ -43,6 +48,19 @@ namespace Worksheet.Views
             StartStreamingButton.IsEnabled = !isStreamingEnabled;
             StopStreamingButton.IsEnabled = isStreamingEnabled;
             StreamingStatusText.Text = isStreamingEnabled ? "Status: Running" : "Status: Stopped";
+        }
+
+        public void SetGateStatsRows(IEnumerable<GateStatsDisplayRow> rows)
+        {
+            if (!Dispatcher.CheckAccess())
+            {
+                Dispatcher.Invoke(() => SetGateStatsRows(rows));
+                return;
+            }
+
+            GateStatsRows.Clear();
+            foreach (var row in rows)
+                GateStatsRows.Add(row);
         }
     }
 }

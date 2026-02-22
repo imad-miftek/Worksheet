@@ -113,46 +113,52 @@ namespace Worksheet.Services
             var (xScale, xOffset, xIsLog, xEffMin, xEffMax) = BuildBinTransform(settings, settings.XAxisScaleType);
             var (yScale, yOffset, yIsLog, yEffMin, yEffMax) = BuildBinTransform(settings, settings.YAxisScaleType);
 
-            // Thread-local int[,] accumulators — int is sufficient for raw counts.
+            // Thread-local int[,] accumulators (row-major): [y, x]
+            // ScottPlot heatmap intensities are indexed by [row, col] => [y, x].
             var localCounts = new ThreadLocal<int[,]>(() => new int[bins, bins], trackAllValues: true);
 
             Parallel.For(0, count, i =>
             {
                 int xBin = ToBin(xValues[i], xScale, xOffset, xIsLog, bins, xEffMin, xEffMax);
                 int yBin = ToBin(yValues[i], yScale, yOffset, yIsLog, bins, yEffMin, yEffMax);
-                localCounts.Value![xBin, yBin]++;
+
+                // ScottPlot Heatmap renders row 0 at the TOP by default.
+                // Our bin mapping assumes y=0 is the BOTTOM of the plot, so we flip rows here to
+                // keep the visual heatmap aligned with axes and gate coordinates.
+                int row = (bins - 1) - yBin;
+                localCounts.Value![row, xBin]++;
             });
 
-            // Merge into a flat double[] for SIMD-accelerated max via ArrayStatistics.
+            // Merge into a flat double[] (row-major) for SIMD-accelerated max via ArrayStatistics.
             var flat = new double[bins * bins];
             foreach (var local in localCounts.Values)
-                for (int x = 0; x < bins; x++)
-                    for (int y = 0; y < bins; y++)
-                        flat[x * bins + y] += local[x, y];
+                for (int y = 0; y < bins; y++)
+                    for (int x = 0; x < bins; x++)
+                        flat[y * bins + x] += local[y, x];
 
             double max = ArrayStatistics.Maximum(flat);
 
             var counts = new double[bins, bins];
             if (max > 0)
             {
-                for (int x = 0; x < bins; x++)
-                    for (int y = 0; y < bins; y++)
+                for (int y = 0; y < bins; y++)
+                    for (int x = 0; x < bins; x++)
                     {
-                        double raw = flat[x * bins + y];
+                        double raw = flat[y * bins + x];
                         if (raw == 0)
                         {
-                            counts[x, y] = double.NaN; // 0 => transparent
+                            counts[y, x] = double.NaN; // 0 => transparent
                             continue;
                         }
 
-                        counts[x, y] = raw / max;
+                        counts[y, x] = raw / max;
                     }
             }
             else
             {
-                for (int x = 0; x < bins; x++)
-                    for (int y = 0; y < bins; y++)
-                        counts[x, y] = 0;
+                for (int y = 0; y < bins; y++)
+                    for (int x = 0; x < bins; x++)
+                        counts[y, x] = 0;
             }
 
             return new HeatmapProcessedData(settings.Id, counts, isEmpty);
@@ -187,7 +193,12 @@ namespace Worksheet.Services
 
                 // Each c is unique so writing distinct columns is race-free.
                 for (int b = 0; b < bins; b++)
-                    counts[b, c] = col[b];
+                {
+                    // ScottPlot Heatmap renders row 0 at the TOP by default.
+                    // Flip rows so y=0 (bin 0) appears at the bottom of the plot.
+                    int row = (bins - 1) - b;
+                    counts[row, c] = col[b];
+                }
             });
 
             // Max over all cells then normalize.

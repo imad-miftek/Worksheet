@@ -8,15 +8,26 @@
         Title="Worksheet" WindowState="Maximized">
     <Grid>
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="2*"/>
-            <ColumnDefinition Width="8*"/>
+            <ColumnDefinition Width="320" MinWidth="240"/>
+            <ColumnDefinition Width="6"/>
+            <ColumnDefinition Width="*"/>
         </Grid.ColumnDefinitions>
 
         <!--Left Sidebar-->
         <local:Sidebar x:Name="SidebarControl" Grid.Column="0"/>
 
+        <!--Resizable splitter between sidebar and worksheet-->
+        <GridSplitter Grid.Column="1"
+                      Width="6"
+                      HorizontalAlignment="Stretch"
+                      VerticalAlignment="Stretch"
+                      Background="#CBD5E1"
+                      ResizeDirection="Columns"
+                      ResizeBehavior="PreviousAndNext"
+                      ShowsPreview="True"/>
+
         <!--Main Content Area-->
-        <Grid Grid.Column="1" Background="White">
+        <Grid Grid.Column="2" Background="White">
             <Grid.RowDefinitions>
                 <RowDefinition Height="0.5*"/>
                 <RowDefinition Height="9.5*"/>

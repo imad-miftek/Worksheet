@@ -3,6 +3,7 @@ using System.Linq;
 using ScottPlot.WPF;
 using Worksheet.Models;
 using Worksheet.Models.Data;
+using Worksheet.Models.Gates;
 using Worksheet.Services;
 using Worksheet.Views.PlotViews.Axes;
 using Worksheet.Views.PlotViews.ContextMenus;
@@ -18,6 +19,8 @@ namespace Worksheet.Views.PlotViews
         private PlotConfigSnapshot? _lastAppliedConfig;
         private double[,]? _emptyIntensities;
         private int _emptyBins;
+
+        public Action<GateSettings>? GateSettingsSink { get; set; }
 
         public PseudocolorPlotView(
             PseudocolorPlotContextMenu contextMenu,
@@ -92,7 +95,12 @@ namespace Worksheet.Views.PlotViews
 
         public void AttachGateInteractions(PlotItem plotItem)
         {
-            _gateVisualManager.Attach(plotItem, () => Settings.GetBinCount());
+            _gateVisualManager.Attach(
+                plotItem,
+                () => Settings.GetBinCount(),
+                () => Settings.Id,
+                () => Settings.PlotType,
+                GateSettingsSink);
         }
 
         internal void BeginAddGateRectangle(PlotItem plotItem)

@@ -9,6 +9,7 @@ using ScottPlot.WPF;
 using Worksheet.Models;
 using Worksheet.Services;
 using Worksheet.Views.PlotViews.Gates;
+using Worksheet.Models.Gates;
 
 namespace Worksheet.Views.Support.Gates
 {
@@ -20,6 +21,9 @@ namespace Worksheet.Views.Support.Gates
         private readonly List<GateBase> _gates = new();
 
         private Func<int> _getBinCount = static () => 256;
+        private Func<Guid> _getPlotId = static () => Guid.Empty;
+        private Func<PlotType> _getPlotType = static () => PlotType.Pseudocolor;
+        private Action<GateSettings>? _gateSettingsSink;
         private PlotItem? _interactionPlotItem;
         private bool _gateInteractionsAttached;
 
@@ -35,11 +39,13 @@ namespace Worksheet.Views.Support.Gates
         private Rectangle? _handleBL;
         private Rectangle? _handleBR;
 
+        // Debug mask overlay removed (gate stats now align with visuals without needing a footprint overlay).
+
         private int _selectedGateIndex = -1;
         private GateInteractionMode _interactionMode = GateInteractionMode.None;
         private ScottPlot.Coordinates _mouseStartCoord;
         private GateBounds _gateStartBounds;
-
+        private bool _gateInteractionDirty;
         private enum GateInteractionMode
         {
             None,
@@ -52,7 +58,12 @@ namespace Worksheet.Views.Support.Gates
 
         private readonly record struct GateBounds(double XMin, double XMax, double YMin, double YMax);
 
-        public void Attach(PlotItem plotItem, Func<int> getBinCount)
+        public void Attach(
+            PlotItem plotItem,
+            Func<int> getBinCount,
+            Func<Guid>? getPlotId = null,
+            Func<PlotType>? getPlotType = null,
+            Action<GateSettings>? gateSettingsSink = null)
         {
             if (_gateInteractionsAttached)
                 return;
@@ -63,6 +74,9 @@ namespace Worksheet.Views.Support.Gates
             _gateInteractionsAttached = true;
             _interactionPlotItem = plotItem;
             _getBinCount = getBinCount ?? _getBinCount;
+            _getPlotId = getPlotId ?? _getPlotId;
+            _getPlotType = getPlotType ?? _getPlotType;
+            _gateSettingsSink = gateSettingsSink;
 
             EnsureHandlesLayer(plotItem);
 
@@ -70,6 +84,7 @@ namespace Worksheet.Views.Support.Gates
             dragLayer.PreviewMouseLeftButtonDown += DragLayer_PreviewMouseLeftButtonDown;
             dragLayer.PreviewMouseMove += DragLayer_PreviewMouseMove;
             dragLayer.PreviewMouseLeftButtonUp += DragLayer_PreviewMouseLeftButtonUp;
+            dragLayer.LostMouseCapture += DragLayer_LostMouseCapture;
 
             plotItem.Plot.Plot.RenderManager.RenderFinished += (_, __) =>
             {
@@ -275,13 +290,16 @@ namespace Worksheet.Views.Support.Gates
             int bins = GetBinCount();
             ClampRect(ref xMin, ref xMax, ref yMin, ref yMax, bins);
 
-            var gate = new RectangleGate(xMin, xMax, yMin, yMax, GateStyle.DefaultRectangle);
+            var gateId = Guid.NewGuid();
+            var gate = new RectangleGate(gateId, name: "", xMin, xMax, yMin, yMax, GateStyle.DefaultRectangle);
             gate.RebuildPlottable(plot);
             if (gate.Plottable != null)
                 plot.Plot.MoveToTop(gate.Plottable);
 
             _gates.Add(gate);
             SelectGate(_gates.Count - 1, plotItem);
+            // debug mask overlay removed
+            EmitGateUpsert(gate);
             plot.Refresh();
         }
 
@@ -362,6 +380,7 @@ namespace Worksheet.Views.Support.Gates
                 }
 
                 SelectGate(hitIndex, _interactionPlotItem);
+                // debug mask overlay removed
                 BeginMove(_interactionPlotItem, coord);
                 e.Handled = true;
                 dragLayer.CaptureMouse();
@@ -407,8 +426,15 @@ namespace Worksheet.Views.Support.Gates
                 return;
 
             dragLayer.ReleaseMouseCapture();
-            _interactionMode = GateInteractionMode.None;
+            FinalizeGateInteraction();
+
             e.Handled = true;
+        }
+
+        private void DragLayer_LostMouseCapture(object sender, MouseEventArgs e)
+        {
+            // Safety net for capture transitions where PreviewMouseLeftButtonUp may not fire as expected.
+            FinalizeGateInteraction();
         }
 
         private void StartResize(PlotItem plotItem, GateInteractionMode mode, MouseButtonEventArgs e)
@@ -425,6 +451,7 @@ namespace Worksheet.Views.Support.Gates
                 _mouseStartCoord = coord;
                 var gate = _gates[_selectedGateIndex];
                 _gateStartBounds = new GateBounds(gate.XMin, gate.XMax, gate.YMin, gate.YMax);
+                _gateInteractionDirty = false;
 
                 e.Handled = true;
                 dragLayer.CaptureMouse();
@@ -442,6 +469,7 @@ namespace Worksheet.Views.Support.Gates
             _mouseStartCoord = mouseCoord;
             var gate = _gates[_selectedGateIndex];
             _gateStartBounds = new GateBounds(gate.XMin, gate.XMax, gate.YMin, gate.YMax);
+            _gateInteractionDirty = false;
         }
 
         private int HitTestGate(ScottPlot.Coordinates c)
@@ -465,6 +493,7 @@ namespace Worksheet.Views.Support.Gates
             _selectedGateIndex = -1;
             _interactionMode = GateInteractionMode.None;
             HideHandles();
+            // debug mask overlay removed
             plotItem.Plot.Refresh();
         }
 
@@ -590,7 +619,41 @@ namespace Worksheet.Views.Support.Gates
                 plotItem.Plot.Plot.MoveToTop(gate.Plottable);
 
             UpdateHandlePositions(plotItem);
+            // debug mask overlay removed
+            _gateInteractionDirty = true;
             plotItem.Plot.Refresh();
+        }
+
+        private void FinalizeGateInteraction()
+        {
+            if (_interactionPlotItem == null)
+            {
+                _interactionMode = GateInteractionMode.None;
+                _gateInteractionDirty = false;
+                return;
+            }
+
+            var previousMode = _interactionMode;
+            _interactionMode = GateInteractionMode.None;
+
+            if (!_gateInteractionDirty && previousMode == GateInteractionMode.None)
+                return;
+
+            _gateInteractionDirty = false;
+
+            if (_selectedGateIndex < 0 || _selectedGateIndex >= _gates.Count)
+                return;
+
+            try
+            {
+                var gate = _gates[_selectedGateIndex];
+                // debug mask overlay removed
+                EmitGateUpsert(gate);
+            }
+            catch (Exception ex)
+            {
+                AppLog.Exception(ex, "GateVisualManager.FinalizeGateInteraction");
+            }
         }
 
         private static void NormalizeRect(ref double xMin, ref double xMax, ref double yMin, ref double yMax)
@@ -627,5 +690,37 @@ namespace Worksheet.Views.Support.Gates
                 return 1;
             }
         }
+
+        private void EmitGateUpsert(GateBase gate)
+        {
+            var sink = _gateSettingsSink;
+            if (sink == null)
+                return;
+
+            try
+            {
+                int bins = GetBinCount();
+                var plotId = _getPlotId();
+                var plotType = _getPlotType();
+
+                var geometry = GateGeometry.FromBinRectangle(gate.XMin, gate.XMax, gate.YMin, gate.YMax, bins);
+
+                sink(new GateSettings
+                {
+                    GateId = gate.GateId,
+                    Name = gate.Name,
+                    Plot = new GatePlotRef(plotId, plotType),
+                    GateType = GateType.Rectangle,
+                    Geometry = geometry,
+                    UpdatedUtc = DateTime.UtcNow,
+                });
+            }
+            catch (Exception ex)
+            {
+                AppLog.Exception(ex, "GateVisualManager.EmitGateUpsert");
+            }
+        }
+
+        // Debug mask overlay removed.
     }
 }

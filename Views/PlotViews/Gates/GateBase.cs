@@ -1,4 +1,5 @@
 using ScottPlot.WPF;
+using System;
 
 namespace Worksheet.Views.PlotViews.Gates
 {
@@ -6,8 +7,10 @@ namespace Worksheet.Views.PlotViews.Gates
     {
         private readonly GateStyle _style;
 
-        protected GateBase(double xMin, double xMax, double yMin, double yMax, GateStyle style)
+        protected GateBase(Guid gateId, string name, double xMin, double xMax, double yMin, double yMax, GateStyle style)
         {
+            GateId = gateId;
+            Name = name;
             XMin = xMin;
             XMax = xMax;
             YMin = yMin;
@@ -15,6 +18,8 @@ namespace Worksheet.Views.PlotViews.Gates
             _style = style;
         }
 
+        public Guid GateId { get; }
+        public string Name { get; }
         public double XMin { get; private set; }
         public double XMax { get; private set; }
         public double YMin { get; private set; }

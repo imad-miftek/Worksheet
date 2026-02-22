@@ -3,6 +3,8 @@ using System.Windows.Threading;
 using ScottPlot.WPF;
 using Worksheet.Models;
 using Worksheet.Services;
+using Worksheet.Models.Gates;
+using Worksheet.Services.Viewport.Gates;
 
 namespace Worksheet.Services
 {
@@ -14,6 +16,7 @@ namespace Worksheet.Services
         private readonly ChasmDataSource _chasmDataSource;
         private readonly Chasm _chasm;
         private readonly PlotProcessor _plotProcessor;
+        private readonly GateProcessor _gateProcessor;
         private readonly ProcessingEngine _processingEngine;
         private readonly RenderingEngine _renderingEngine;
         private readonly FeatureSelectionStrategy _featureSelection;
@@ -29,7 +32,8 @@ namespace Worksheet.Services
             _chasm = new Chasm(producer, consumer, _chasmDataSource);
 
             _plotProcessor = new PlotProcessor(_chasmDataSource);
-            _processingEngine = new ProcessingEngine(_dataStore, _plotProcessor, () => _chasm.DataVersion, processingInterval);
+            _gateProcessor = new GateProcessor(_chasmDataSource);
+            _processingEngine = new ProcessingEngine(_dataStore, _plotProcessor, _gateProcessor, () => _chasm.DataVersion, processingInterval);
             _renderingEngine = new RenderingEngine(_dataStore, dispatcher, renderingInterval);
             _featureSelection = new FeatureSelectionStrategy();
         }
@@ -92,6 +96,16 @@ namespace Worksheet.Services
                 MemoryCleared?.Invoke(this, EventArgs.Empty);
             else
                 _dispatcher.BeginInvoke(() => MemoryCleared?.Invoke(this, EventArgs.Empty));
+        }
+
+        public void UpsertGate(GateSettings gate)
+        {
+            _dataStore.UpsertGate(gate);
+        }
+
+        public void RemoveGate(Guid gateId)
+        {
+            _dataStore.RemoveGate(gateId);
         }
     }
 }

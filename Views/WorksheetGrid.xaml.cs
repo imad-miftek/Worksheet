@@ -7,6 +7,7 @@ using Worksheet.Models;
 using Worksheet.Services;
 using Worksheet.Views.PlotViews;
 using Worksheet.Views.Support;
+using Worksheet.Models.Gates;
 
 namespace Worksheet.Views
 {
@@ -378,6 +379,9 @@ namespace Worksheet.Views
             _dragHandler.AttachDrag(container.DragLayer, plotItem,
                                     WorksheetGridContainer, _selectionManager, SnapSize);
 
+            if (plotView is PseudocolorPlotView pcView)
+                pcView.GateSettingsSink = gate => _viewportSession.UpsertGate(gate);
+
             plotView?.AttachContextMenu(plotItem);
             _selectionManager.Register(plotItem, plotItem.OnSelect, plotItem.OnDeselect);
 
@@ -434,6 +438,9 @@ namespace Worksheet.Views
                                     WorksheetGridContainer, _selectionManager, SnapSize);
 
             // Attach plot-specific context menu
+            if (plotView is PseudocolorPlotView pcView)
+                pcView.GateSettingsSink = gate => _viewportSession.UpsertGate(gate);
+
             plotView?.AttachContextMenu(plotItem);
 
             // Register with selection manager
@@ -470,6 +477,48 @@ namespace Worksheet.Views
         public void ClearMemory()
         {
             _viewportSession.ClearMemory();
+        }
+
+        public IReadOnlyList<GateStatsDisplayRow> GetGateStatsRows()
+        {
+            try
+            {
+                var gates = _viewportSession.DataStore.GetAllGates();
+                var rows = new List<GateStatsDisplayRow>(gates.Count);
+
+                foreach (var gate in gates)
+                {
+                    var dict = _viewportSession.DataStore.TryGetGateResult(gate.GateId, out var result)
+                        ? result.Stats.ToDisplayDictionary()
+                        : new Dictionary<string, string>
+                        {
+                            ["Num"] = "0.0 %",
+                            ["Total"] = "0",
+                            ["CV"] = "0.0",
+                            ["Mean"] = "0.0",
+                            ["STD"] = "0.0",
+                            ["Var"] = "0.0",
+                        };
+
+                    rows.Add(new GateStatsDisplayRow
+                    {
+                        GateId = gate.GateId,
+                        GateName = gate.Name,
+                        Num = dict.GetValueOrDefault("Num", ""),
+                        Total = dict.GetValueOrDefault("Total", ""),
+                        CV = dict.GetValueOrDefault("CV", ""),
+                        Mean = dict.GetValueOrDefault("Mean", ""),
+                        STD = dict.GetValueOrDefault("STD", ""),
+                        Var = dict.GetValueOrDefault("Var", ""),
+                    });
+                }
+
+                return rows;
+            }
+            catch
+            {
+                return Array.Empty<GateStatsDisplayRow>();
+            }
         }
 
         private void ClearAllPlotVisuals()

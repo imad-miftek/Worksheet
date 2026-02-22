@@ -1,5 +1,7 @@
 ﻿using System.Windows;
 using Worksheet.Models;
+using System;
+using System.Windows.Threading;
 
 namespace Worksheet.Views
 {
@@ -8,6 +10,8 @@ namespace Worksheet.Views
     /// </summary>
     public partial class MainWindow : Window
     {
+        private readonly DispatcherTimer _gateStatsTimer = new(DispatcherPriority.Background);
+
         public MainWindow()
         {
             InitializeComponent();
@@ -20,6 +24,21 @@ namespace Worksheet.Views
             SidebarControl.StartStreamingClicked += Sidebar_StartStreamingClicked;
             SidebarControl.StopStreamingClicked += Sidebar_StopStreamingClicked;
             SidebarControl.SetStreamingState(WorksheetGridControl.IsStreamingEnabled);
+
+            _gateStatsTimer.Interval = TimeSpan.FromMilliseconds(250);
+            _gateStatsTimer.Tick += (_, __) =>
+            {
+                try
+                {
+                    SidebarControl.SetGateStatsRows(WorksheetGridControl.GetGateStatsRows());
+                }
+                catch
+                {
+                }
+            };
+            _gateStatsTimer.Start();
+
+            Closed += (_, __) => _gateStatsTimer.Stop();
         }
 
         private void Toolbar_HistogramPlotButtonClicked(object? sender, System.EventArgs e)
