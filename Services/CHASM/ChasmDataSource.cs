@@ -29,6 +29,8 @@ namespace Worksheet.Services
         public void SetStreamingEnabled(bool enabled) => _dataSource.SetStreamingEnabled(enabled);
 
         public ChannelWindowSnapshot GetSnapshot(int featureIndex) => _dataSource.GetSnapshot(featureIndex);
+
+        public MultiChannelWindowSnapshot GetSnapshot(params int[] featureIndices) => _dataSource.GetSnapshot(featureIndices);
     }
 }
 

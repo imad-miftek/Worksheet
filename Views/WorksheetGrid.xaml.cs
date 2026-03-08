@@ -495,6 +495,16 @@ namespace Worksheet.Views
             _viewportSession.ClearMemory();
         }
 
+        public void ResetProcessingMetrics()
+        {
+            _viewportSession.ResetProcessingMetrics();
+        }
+
+        public void ResetRenderMetrics()
+        {
+            _viewportSession.ResetRenderMetrics();
+        }
+
         public IReadOnlyList<GateStatsDisplayRow> GetGateStatsRows()
         {
             try

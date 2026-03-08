@@ -7,5 +7,8 @@ namespace Worksheet.Services
         double SpectralRibbonAverageComputeMs,
         double HistogramAverageRenderMs,
         double PseudocolorAverageRenderMs,
-        double SpectralRibbonAverageRenderMs);
+        double SpectralRibbonAverageRenderMs,
+        long DeltaAppliedCount,
+        long FullRebuildCount,
+        long SequenceGapCount);
 }

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Threading;
 using System.Windows.Threading;
 using ScottPlot.WPF;
 using Worksheet.Models;
@@ -12,8 +13,12 @@ namespace Worksheet.Services
     {
         private readonly DataStore _dataStore;
         private readonly Dispatcher _dispatcher;
-        private readonly object _lock = new();
+        private readonly object _targetsLock = new();
         private readonly List<RenderTarget> _targets = new();
+        private readonly object _pendingLock = new();
+        private readonly Dictionary<Guid, PendingRender> _pendingRenders = new();
+        private int _renderPassScheduled;
+
         private readonly object _metricsLock = new();
         private double _histRenderTotalMs;
         private long _histRenderCount;
@@ -31,7 +36,7 @@ namespace Worksheet.Services
 
         public void Register(WpfPlot plot, PlotView plotView, PlotSettings settings)
         {
-            lock (_lock)
+            lock (_targetsLock)
             {
                 _targets.Add(new RenderTarget(plot, plotView, settings.Id, settings.PlotType));
             }
@@ -39,48 +44,44 @@ namespace Worksheet.Services
 
         public void Unregister(Guid plotId)
         {
-            lock (_lock)
+            lock (_targetsLock)
             {
                 _targets.RemoveAll(t => t.PlotId == plotId);
+            }
+
+            lock (_pendingLock)
+            {
+                _pendingRenders.Remove(plotId);
             }
         }
 
         protected override void Tick()
         {
             List<RenderTarget> snapshot;
-            lock (_lock)
+            lock (_targetsLock)
             {
                 snapshot = new List<RenderTarget>(_targets);
             }
 
+            bool enqueued = false;
             foreach (var target in snapshot)
             {
-                if (_dataStore.TryGetProcessedData(target.PlotId, out var data))
-                {
-                    if (ReferenceEquals(data, target.LastRenderedData))
-                        continue;
+                if (!_dataStore.TryGetProcessedData(target.PlotId, out var data))
+                    continue;
 
-                    _dispatcher.Invoke(() =>
-                    {
-                        var stopwatch = Stopwatch.StartNew();
-                        try
-                        {
-                            target.PlotView.Render(target.Plot, data);
-                        }
-                        catch (Exception ex)
-                        {
-                            // Avoid crashing the dispatcher thread. Mark as rendered to prevent tight exception loops.
-                            AppLog.Exception(ex, $"RenderingEngine.Render plotId={target.PlotId} view={target.PlotView.GetType().Name}");
-                        }
-                        finally
-                        {
-                            stopwatch.Stop();
-                            RecordRenderTime(target.PlotType, stopwatch.Elapsed.TotalMilliseconds);
-                            target.LastRenderedData = data;
-                        }
-                    });
+                if (ReferenceEquals(data, target.LastRenderedData))
+                    continue;
+
+                lock (_pendingLock)
+                {
+                    _pendingRenders[target.PlotId] = new PendingRender(target, data);
                 }
+
+                enqueued = true;
             }
+
+            if (enqueued)
+                ScheduleRenderPass();
         }
 
         public PlotTimingSnapshot GetAverageRenderTimes()
@@ -91,6 +92,72 @@ namespace Worksheet.Services
                     HistogramAverageMs: ComputeAverage(_histRenderTotalMs, _histRenderCount),
                     PseudocolorAverageMs: ComputeAverage(_pcRenderTotalMs, _pcRenderCount),
                     SpectralRibbonAverageMs: ComputeAverage(_srRenderTotalMs, _srRenderCount));
+            }
+        }
+
+        public void ResetMetrics()
+        {
+            lock (_metricsLock)
+            {
+                _histRenderTotalMs = 0;
+                _histRenderCount = 0;
+                _pcRenderTotalMs = 0;
+                _pcRenderCount = 0;
+                _srRenderTotalMs = 0;
+                _srRenderCount = 0;
+            }
+        }
+
+        private void ScheduleRenderPass()
+        {
+            if (Interlocked.Exchange(ref _renderPassScheduled, 1) == 1)
+                return;
+
+            _dispatcher.BeginInvoke(DispatcherPriority.Render, new Action(RenderPendingOnUiThread));
+        }
+
+        private void RenderPendingOnUiThread()
+        {
+            try
+            {
+                List<PendingRender> pending;
+                lock (_pendingLock)
+                {
+                    pending = new List<PendingRender>(_pendingRenders.Values);
+                    _pendingRenders.Clear();
+                }
+
+                foreach (var item in pending)
+                {
+                    var stopwatch = Stopwatch.StartNew();
+                    try
+                    {
+                        item.Target.PlotView.Render(item.Target.Plot, item.Data);
+                    }
+                    catch (Exception ex)
+                    {
+                        AppLog.Exception(ex, $"RenderingEngine.Render plotId={item.Target.PlotId} view={item.Target.PlotView.GetType().Name}");
+                    }
+                    finally
+                    {
+                        stopwatch.Stop();
+                        RecordRenderTime(item.Target.PlotType, stopwatch.Elapsed.TotalMilliseconds);
+                        item.Target.LastRenderedData = item.Data;
+                    }
+                }
+            }
+            finally
+            {
+                Volatile.Write(ref _renderPassScheduled, 0);
+
+                bool hasPending;
+                lock (_pendingLock)
+                {
+                    hasPending = _pendingRenders.Count > 0;
+                }
+
+                if (hasPending)
+                    ScheduleRenderPass();
             }
         }
 
@@ -137,5 +204,7 @@ namespace Worksheet.Services
             public PlotType PlotType { get; }
             public object? LastRenderedData { get; set; }
         }
+
+        private readonly record struct PendingRender(RenderTarget Target, Models.Data.ProcessedPlotData Data);
     }
 }

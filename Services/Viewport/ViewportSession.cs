@@ -96,12 +96,23 @@ namespace Worksheet.Services
         public void ClearMemory()
         {
             _chasm.ClearMemory();
+            _processingEngine.OnDataCleared();
 
             // Clear visuals immediately on the UI thread without relying on a new render cycle.
             if (_dispatcher.CheckAccess())
                 MemoryCleared?.Invoke(this, EventArgs.Empty);
             else
                 _dispatcher.BeginInvoke(() => MemoryCleared?.Invoke(this, EventArgs.Empty));
+        }
+
+        public void ResetProcessingMetrics()
+        {
+            _processingEngine.ResetMetrics();
+        }
+
+        public void ResetRenderMetrics()
+        {
+            _renderingEngine.ResetMetrics();
         }
 
         public void UpsertGate(GateSettings gate)
@@ -118,6 +129,7 @@ namespace Worksheet.Services
         {
             var compute = _processingEngine.GetAverageComputeTimes();
             var render = _renderingEngine.GetAverageRenderTimes();
+            var incremental = _processingEngine.GetIncrementalStats();
 
             double eventRate;
             long totalEvents = _dataSource.TotalEventsIngested;
@@ -146,7 +158,10 @@ namespace Worksheet.Services
                 SpectralRibbonAverageComputeMs: compute.SpectralRibbonAverageMs,
                 HistogramAverageRenderMs: render.HistogramAverageMs,
                 PseudocolorAverageRenderMs: render.PseudocolorAverageMs,
-                SpectralRibbonAverageRenderMs: render.SpectralRibbonAverageMs);
+                SpectralRibbonAverageRenderMs: render.SpectralRibbonAverageMs,
+                DeltaAppliedCount: incremental.DeltaAppliedCount,
+                FullRebuildCount: incremental.FullRebuildCount,
+                SequenceGapCount: incremental.SequenceGapCount);
         }
     }
 }

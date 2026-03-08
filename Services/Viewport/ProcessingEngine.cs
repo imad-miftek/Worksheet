@@ -14,6 +14,7 @@ namespace Worksheet.Services
         private readonly PlotProcessor _plotProcessor;
         private readonly GateProcessor _gateProcessor;
         private readonly Func<long> _getDataVersion;
+        private readonly object _processingLock = new();
         private readonly Dictionary<Guid, SettingsFingerprint> _lastProcessedSettings = new();
         private readonly Dictionary<Guid, GateFingerprint> _lastProcessedGates = new();
         private readonly object _metricsLock = new();
@@ -35,38 +36,41 @@ namespace Worksheet.Services
 
         protected override void Tick()
         {
-            long dataVersion = _getDataVersion();
-
-            var settings = _dataStore.GetAllSettings();
-            var activePlotIds = new HashSet<Guid>();
-
-            foreach (var plotSettings in settings)
+            lock (_processingLock)
             {
-                activePlotIds.Add(plotSettings.Id);
-                var fingerprint = SettingsFingerprint.From(plotSettings, dataVersion);
+                long dataVersion = _getDataVersion();
 
-                if (_lastProcessedSettings.TryGetValue(plotSettings.Id, out var previous) && previous.Equals(fingerprint))
-                    continue;
+                var settings = _dataStore.GetAllSettings();
+                var activePlotIds = new HashSet<Guid>();
 
-                var stopwatch = Stopwatch.StartNew();
-                var processed = _plotProcessor.Process(plotSettings);
-                stopwatch.Stop();
-                RecordComputeTime(plotSettings.PlotType, stopwatch.Elapsed.TotalMilliseconds);
-
-                if (processed != null)
+                foreach (var plotSettings in settings)
                 {
-                    _dataStore.SetProcessedData(processed);
-                    _lastProcessedSettings[plotSettings.Id] = fingerprint;
+                    activePlotIds.Add(plotSettings.Id);
+                    var fingerprint = SettingsFingerprint.From(plotSettings, dataVersion);
+
+                    if (_lastProcessedSettings.TryGetValue(plotSettings.Id, out var previous) && previous.Equals(fingerprint))
+                        continue;
+
+                    var stopwatch = Stopwatch.StartNew();
+                    var processed = _plotProcessor.Process(plotSettings);
+                    stopwatch.Stop();
+                    RecordComputeTime(plotSettings.PlotType, stopwatch.Elapsed.TotalMilliseconds);
+
+                    if (processed != null)
+                    {
+                        _dataStore.SetProcessedData(processed);
+                        _lastProcessedSettings[plotSettings.Id] = fingerprint;
+                    }
                 }
-            }
 
-            var staleIds = _lastProcessedSettings.Keys.Where(id => !activePlotIds.Contains(id)).ToArray();
-            foreach (var staleId in staleIds)
-            {
-                _lastProcessedSettings.Remove(staleId);
-            }
+                var staleIds = _lastProcessedSettings.Keys.Where(id => !activePlotIds.Contains(id)).ToArray();
+                foreach (var staleId in staleIds)
+                {
+                    _lastProcessedSettings.Remove(staleId);
+                }
 
-            ProcessGates(dataVersion);
+                ProcessGates(dataVersion);
+            }
         }
 
         private void ProcessGates(long dataVersion)
@@ -103,6 +107,37 @@ namespace Worksheet.Services
                     HistogramAverageMs: ComputeAverage(_histComputeTotalMs, _histComputeCount),
                     PseudocolorAverageMs: ComputeAverage(_pcComputeTotalMs, _pcComputeCount),
                     SpectralRibbonAverageMs: ComputeAverage(_srComputeTotalMs, _srComputeCount));
+            }
+        }
+
+        public IncrementalProcessingStats GetIncrementalStats()
+        {
+            var (deltaAppliedCount, fullRebuildCount, sequenceGapCount) = _plotProcessor.GetDeltaStats();
+            return new IncrementalProcessingStats(deltaAppliedCount, fullRebuildCount, sequenceGapCount);
+        }
+
+        public void ResetMetrics()
+        {
+            lock (_metricsLock)
+            {
+                _histComputeTotalMs = 0;
+                _histComputeCount = 0;
+                _pcComputeTotalMs = 0;
+                _pcComputeCount = 0;
+                _srComputeTotalMs = 0;
+                _srComputeCount = 0;
+            }
+
+            _plotProcessor.ResetIncrementalState();
+        }
+
+        public void OnDataCleared()
+        {
+            lock (_processingLock)
+            {
+                _lastProcessedSettings.Clear();
+                _lastProcessedGates.Clear();
+                _plotProcessor.ResetIncrementalState();
             }
         }
 

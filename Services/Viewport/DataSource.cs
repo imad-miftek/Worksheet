@@ -43,8 +43,41 @@ namespace Worksheet.Services
             int idx = ClampFeatureIndex(featureIndex);
             lock (_lock)
             {
-                int startIndex = (_writeIndex - _count + _windowCapacity) % _windowCapacity;
-                return new ChannelWindowSnapshot(_channels[idx], startIndex, _count, _windowCapacity, _dataVersion);
+                var metadata = CaptureWindowMetadata();
+                return new ChannelWindowSnapshot(
+                    Values: _channels[idx],
+                    StartIndex: metadata.startIndex,
+                    Count: _count,
+                    Capacity: _windowCapacity,
+                    Version: _dataVersion,
+                    StartSequence: metadata.startSequence,
+                    EndSequence: _totalEventsIngested);
+            }
+        }
+
+        public MultiChannelWindowSnapshot GetSnapshot(params int[] featureIndices)
+        {
+            if (featureIndices == null || featureIndices.Length == 0)
+                return MultiChannelWindowSnapshot.Empty;
+
+            lock (_lock)
+            {
+                var metadata = CaptureWindowMetadata();
+                var channels = new double[featureIndices.Length][];
+                for (int i = 0; i < featureIndices.Length; i++)
+                {
+                    int idx = ClampFeatureIndex(featureIndices[i]);
+                    channels[i] = _channels[idx];
+                }
+
+                return new MultiChannelWindowSnapshot(
+                    ChannelValues: channels,
+                    StartIndex: metadata.startIndex,
+                    Count: _count,
+                    Capacity: _windowCapacity,
+                    Version: _dataVersion,
+                    StartSequence: metadata.startSequence,
+                    EndSequence: _totalEventsIngested);
             }
         }
 
@@ -113,6 +146,13 @@ namespace Worksheet.Services
             int remaining = count - firstSegment;
             if (remaining > 0)
                 Array.Copy(source, sourceOffset + firstSegment, destination, 0, remaining);
+        }
+
+        private (int startIndex, long startSequence) CaptureWindowMetadata()
+        {
+            int startIndex = (_writeIndex - _count + _windowCapacity) % _windowCapacity;
+            long startSequence = _totalEventsIngested - _count;
+            return (startIndex, startSequence);
         }
 
         public bool IsStreamingEnabled

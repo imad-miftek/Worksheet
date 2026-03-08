@@ -1,7 +1,6 @@
 using System;
-using System.Threading;
-using System.Threading.Tasks;
-using MathNet.Numerics.Statistics;
+using System.Collections.Generic;
+using System.Linq;
 using Worksheet.Models;
 using Worksheet.Models.Data;
 
@@ -10,6 +9,14 @@ namespace Worksheet.Services
     public class PlotProcessor
     {
         private readonly IChannelDataBuffer _buffer;
+        private readonly object _stateLock = new();
+        private readonly Dictionary<Guid, HistogramProcessingState> _histogramStates = new();
+        private readonly Dictionary<Guid, PseudocolorProcessingState> _pseudocolorStates = new();
+        private readonly Dictionary<Guid, SpectralRibbonProcessingState> _spectralStates = new();
+        private readonly object _statsLock = new();
+        private long _deltaAppliedCount;
+        private long _fullRebuildCount;
+        private long _sequenceGapCount;
 
         public PlotProcessor(IChannelDataBuffer buffer)
         {
@@ -32,6 +39,31 @@ namespace Worksheet.Services
             {
                 AppLog.Exception(ex, $"PlotProcessor.Process plotType={settings.PlotType} plotId={settings.Id} x={settings.XFeature} y={settings.YFeature}");
                 return null;
+            }
+        }
+
+        public (long deltaAppliedCount, long fullRebuildCount, long sequenceGapCount) GetDeltaStats()
+        {
+            lock (_statsLock)
+            {
+                return (_deltaAppliedCount, _fullRebuildCount, _sequenceGapCount);
+            }
+        }
+
+        public void ResetIncrementalState()
+        {
+            lock (_stateLock)
+            {
+                _histogramStates.Clear();
+                _pseudocolorStates.Clear();
+                _spectralStates.Clear();
+            }
+
+            lock (_statsLock)
+            {
+                _deltaAppliedCount = 0;
+                _fullRebuildCount = 0;
+                _sequenceGapCount = 0;
             }
         }
 
@@ -72,76 +104,260 @@ namespace Worksheet.Services
         private ProcessedPlotData ProcessHistogram(PlotSettings settings)
         {
             ChannelWindowSnapshot snapshot = _buffer.GetSnapshot(settings.XFeature);
-            int binCount = settings.GetBinCount();
+            int bins = settings.GetBinCount();
             var (scale, offset, isLog, effMin, effMax) = BuildBinTransform(settings, settings.XAxisScaleType);
 
-            var localCounts = new ThreadLocal<double[]>(() => new double[binCount], trackAllValues: true);
-
-            RunParallel(snapshot, physicalIndex =>
+            HistogramProcessingState state;
+            lock (_stateLock)
             {
-                double value = snapshot.Values[physicalIndex];
-                localCounts.Value![ToBin(value, scale, offset, isLog, binCount, effMin, effMax)]++;
-            });
+                if (!_histogramStates.TryGetValue(settings.Id, out state!))
+                {
+                    state = new HistogramProcessingState(settings.Id, bins, settings.XFeature, settings.XAxisScaleType, settings.MinValue, settings.MaxValue, snapshot.Capacity);
+                    _histogramStates[settings.Id] = state;
+                }
+                else if (!state.Matches(bins, settings.XFeature, settings.XAxisScaleType, settings.MinValue, settings.MaxValue, snapshot.Capacity))
+                {
+                    state.Reset(bins, settings.XFeature, settings.XAxisScaleType, settings.MinValue, settings.MaxValue, snapshot.Capacity);
+                    RecordFullRebuild();
+                }
+            }
 
-            var counts = new double[binCount];
-            foreach (double[] local in localCounts.Values)
-                for (int i = 0; i < binCount; i++)
-                    counts[i] += local[i];
+            if (snapshot.Count <= 0)
+            {
+                state.ClearData(snapshot.EndSequence);
+                return BuildHistogramData(settings.Id, state.Counts, bins, settings.XAxisScaleType);
+            }
 
-            var positions = new double[binCount];
-            for (int i = 0; i < binCount; i++)
+            if (NeedsRebuild(state.LastProcessedSequence, snapshot))
+            {
+                if (state.LastProcessedSequence < snapshot.StartSequence && state.LastProcessedSequence != 0)
+                    RecordSequenceGap();
+
+                state.ClearData(snapshot.StartSequence);
+                ApplyHistogramRange(state, snapshot, snapshot.StartSequence, snapshot.EndSequence, scale, offset, isLog, bins, effMin, effMax);
+                state.LastProcessedSequence = snapshot.EndSequence;
+                RecordFullRebuild();
+            }
+            else
+            {
+                long fromSequence = state.LastProcessedSequence;
+                if (fromSequence < snapshot.EndSequence)
+                {
+                    ApplyHistogramRange(state, snapshot, fromSequence, snapshot.EndSequence, scale, offset, isLog, bins, effMin, effMax);
+                    state.LastProcessedSequence = snapshot.EndSequence;
+                    RecordDeltaApplied(snapshot.EndSequence - fromSequence);
+                }
+
+                TrimHistogramToWindow(state, snapshot.Count);
+            }
+
+            return BuildHistogramData(settings.Id, state.Counts, bins, settings.XAxisScaleType);
+        }
+
+        private static HistogramProcessedData BuildHistogramData(Guid plotId, double[] counts, int bins, AxisScaleType scaleType)
+        {
+            var outCounts = new double[bins];
+            Array.Copy(counts, outCounts, bins);
+
+            var positions = new double[bins];
+            for (int i = 0; i < bins; i++)
                 positions[i] = i + 0.5;
 
-            return new HistogramProcessedData(settings.Id, positions, counts, binCount, settings.XAxisScaleType);
+            return new HistogramProcessedData(plotId, positions, outCounts, bins, scaleType);
+        }
+
+        private static void ApplyHistogramRange(
+            HistogramProcessingState state,
+            ChannelWindowSnapshot snapshot,
+            long fromSequence,
+            long toSequence,
+            double scale,
+            double offset,
+            bool isLog,
+            int bins,
+            double effMin,
+            double effMax)
+        {
+            for (long sequence = fromSequence; sequence < toSequence; sequence++)
+            {
+                int physicalIndex = snapshot.PhysicalIndexForSequence(sequence);
+                double value = snapshot.Values[physicalIndex];
+                int bin = ToBin(value, scale, offset, isLog, bins, effMin, effMax);
+                state.Counts[bin]++;
+                AppendHistogramContribution(state, bin);
+            }
+        }
+
+        private static void AppendHistogramContribution(HistogramProcessingState state, int bin)
+        {
+            if (state.RingCount == state.RingBins.Length)
+            {
+                int evicted = state.RingBins[state.RingStart];
+                state.Counts[evicted]--;
+                state.RingStart = (state.RingStart + 1) % state.RingBins.Length;
+                state.RingCount--;
+            }
+
+            int writeIndex = (state.RingStart + state.RingCount) % state.RingBins.Length;
+            state.RingBins[writeIndex] = bin;
+            state.RingCount++;
+        }
+
+        private static void TrimHistogramToWindow(HistogramProcessingState state, int windowCount)
+        {
+            while (state.RingCount > windowCount)
+            {
+                int evicted = state.RingBins[state.RingStart];
+                state.Counts[evicted]--;
+                state.RingStart = (state.RingStart + 1) % state.RingBins.Length;
+                state.RingCount--;
+            }
         }
 
         private ProcessedPlotData ProcessHeatmap(PlotSettings settings)
         {
-            ChannelWindowSnapshot xSnapshot = _buffer.GetSnapshot(settings.XFeature);
-            ChannelWindowSnapshot ySnapshot = _buffer.GetSnapshot(settings.YFeature);
-            int count = Math.Min(xSnapshot.Count, ySnapshot.Count);
+            MultiChannelWindowSnapshot snapshot = _buffer.GetSnapshot(settings.XFeature, settings.YFeature);
             int bins = settings.GetBinCount();
-            bool isEmpty = count <= 0;
-
+            bool isEmpty = snapshot.Count <= 0;
             var (xScale, xOffset, xIsLog, xEffMin, xEffMax) = BuildBinTransform(settings, settings.XAxisScaleType);
             var (yScale, yOffset, yIsLog, yEffMin, yEffMax) = BuildBinTransform(settings, settings.YAxisScaleType);
 
-            var localCounts = new ThreadLocal<int[,]>(() => new int[bins, bins], trackAllValues: true);
-
-            RunParallel(xSnapshot, ySnapshot, count, (xPhysicalIndex, yPhysicalIndex) =>
+            PseudocolorProcessingState state;
+            lock (_stateLock)
             {
-                int xBin = ToBin(xSnapshot.Values[xPhysicalIndex], xScale, xOffset, xIsLog, bins, xEffMin, xEffMax);
-                int yBin = ToBin(ySnapshot.Values[yPhysicalIndex], yScale, yOffset, yIsLog, bins, yEffMin, yEffMax);
-                int row = (bins - 1) - yBin;
-                localCounts.Value![row, xBin]++;
-            });
-
-            var flat = new double[bins * bins];
-            foreach (int[,] local in localCounts.Values)
-                for (int y = 0; y < bins; y++)
-                    for (int x = 0; x < bins; x++)
-                        flat[y * bins + x] += local[y, x];
-
-            double max = ArrayStatistics.Maximum(flat);
-
-            var counts = new double[bins, bins];
-            if (max > 0)
-            {
-                for (int y = 0; y < bins; y++)
-                    for (int x = 0; x < bins; x++)
-                    {
-                        double raw = flat[y * bins + x];
-                        counts[y, x] = raw == 0 ? double.NaN : raw / max;
-                    }
+                if (!_pseudocolorStates.TryGetValue(settings.Id, out state!))
+                {
+                    state = new PseudocolorProcessingState(settings.Id, bins, settings.XFeature, settings.YFeature, settings.XAxisScaleType, settings.YAxisScaleType, settings.MinValue, settings.MaxValue, snapshot.Capacity);
+                    _pseudocolorStates[settings.Id] = state;
+                }
+                else if (!state.Matches(bins, settings.XFeature, settings.YFeature, settings.XAxisScaleType, settings.YAxisScaleType, settings.MinValue, settings.MaxValue, snapshot.Capacity))
+                {
+                    state.Reset(bins, settings.XFeature, settings.YFeature, settings.XAxisScaleType, settings.YAxisScaleType, settings.MinValue, settings.MaxValue, snapshot.Capacity);
+                    RecordFullRebuild();
+                }
             }
 
-            return new HeatmapProcessedData(settings.Id, counts, isEmpty);
+            if (snapshot.Count <= 0)
+            {
+                state.ClearData(snapshot.EndSequence);
+                return new HeatmapProcessedData(settings.Id, state.Normalized, isEmpty: true);
+            }
+
+            if (NeedsRebuild(state.LastProcessedSequence, snapshot))
+            {
+                if (state.LastProcessedSequence < snapshot.StartSequence && state.LastProcessedSequence != 0)
+                    RecordSequenceGap();
+
+                state.ClearData(snapshot.StartSequence);
+                ApplyPseudocolorRange(state, snapshot, snapshot.StartSequence, snapshot.EndSequence, xScale, xOffset, xIsLog, yScale, yOffset, yIsLog, bins, xEffMin, xEffMax, yEffMin, yEffMax);
+                state.LastProcessedSequence = snapshot.EndSequence;
+                RecordFullRebuild();
+            }
+            else
+            {
+                long fromSequence = state.LastProcessedSequence;
+                if (fromSequence < snapshot.EndSequence)
+                {
+                    ApplyPseudocolorRange(state, snapshot, fromSequence, snapshot.EndSequence, xScale, xOffset, xIsLog, yScale, yOffset, yIsLog, bins, xEffMin, xEffMax, yEffMin, yEffMax);
+                    state.LastProcessedSequence = snapshot.EndSequence;
+                    RecordDeltaApplied(snapshot.EndSequence - fromSequence);
+                }
+
+                TrimPseudocolorToWindow(state, snapshot.Count);
+            }
+
+            NormalizePseudocolor(state, bins);
+            return new HeatmapProcessedData(settings.Id, state.Normalized, isEmpty: isEmpty);
+        }
+
+        private static void ApplyPseudocolorRange(
+            PseudocolorProcessingState state,
+            MultiChannelWindowSnapshot snapshot,
+            long fromSequence,
+            long toSequence,
+            double xScale,
+            double xOffset,
+            bool xIsLog,
+            double yScale,
+            double yOffset,
+            bool yIsLog,
+            int bins,
+            double xEffMin,
+            double xEffMax,
+            double yEffMin,
+            double yEffMax)
+        {
+            for (long sequence = fromSequence; sequence < toSequence; sequence++)
+            {
+                int xPhysicalIndex = snapshot.PhysicalIndexForSequence(sequence);
+                int yPhysicalIndex = xPhysicalIndex;
+                double xv = snapshot.ChannelValues[0][xPhysicalIndex];
+                double yv = snapshot.ChannelValues[1][yPhysicalIndex];
+                int xBin = ToBin(xv, xScale, xOffset, xIsLog, bins, xEffMin, xEffMax);
+                int yBin = ToBin(yv, yScale, yOffset, yIsLog, bins, yEffMin, yEffMax);
+                int row = (bins - 1) - yBin;
+                state.RawCounts[row, xBin]++;
+                AppendPseudocolorContribution(state, row, xBin);
+            }
+        }
+
+        private static void AppendPseudocolorContribution(PseudocolorProcessingState state, int row, int xBin)
+        {
+            if (state.RingCount == state.RingPackedBins.Length)
+            {
+                int packedEvicted = state.RingPackedBins[state.RingStart];
+                int evictedX = packedEvicted & 0xFFFF;
+                int evictedRow = (packedEvicted >> 16) & 0xFFFF;
+                state.RawCounts[evictedRow, evictedX]--;
+                state.RingStart = (state.RingStart + 1) % state.RingPackedBins.Length;
+                state.RingCount--;
+            }
+
+            int writeIndex = (state.RingStart + state.RingCount) % state.RingPackedBins.Length;
+            state.RingPackedBins[writeIndex] = (row << 16) | xBin;
+            state.RingCount++;
+        }
+
+        private static void TrimPseudocolorToWindow(PseudocolorProcessingState state, int windowCount)
+        {
+            while (state.RingCount > windowCount)
+            {
+                int packed = state.RingPackedBins[state.RingStart];
+                int x = packed & 0xFFFF;
+                int row = (packed >> 16) & 0xFFFF;
+                state.RawCounts[row, x]--;
+                state.RingStart = (state.RingStart + 1) % state.RingPackedBins.Length;
+                state.RingCount--;
+            }
+        }
+
+        private static void NormalizePseudocolor(PseudocolorProcessingState state, int bins)
+        {
+            int max = 0;
+            for (int y = 0; y < bins; y++)
+                for (int x = 0; x < bins; x++)
+                    if (state.RawCounts[y, x] > max) max = state.RawCounts[y, x];
+
+            if (max <= 0)
+            {
+                for (int y = 0; y < bins; y++)
+                    for (int x = 0; x < bins; x++)
+                        state.Normalized[y, x] = 0;
+                return;
+            }
+
+            for (int y = 0; y < bins; y++)
+                for (int x = 0; x < bins; x++)
+                {
+                    int raw = state.RawCounts[y, x];
+                    state.Normalized[y, x] = raw == 0 ? double.NaN : (double)raw / max;
+                }
         }
 
         private ProcessedPlotData ProcessSpectralRibbon(PlotSettings settings)
         {
-            var channelNames = FeatureSelectionStrategy.ChannelNames;
-            int channelCount = channelNames.Count;
+            var channelIndices = FeatureSelectionStrategy.FilteredChannelIndices;
+            int channelCount = channelIndices.Count;
             int bins = settings.GetBinCount();
 
             if (channelCount == 0)
@@ -150,97 +366,361 @@ namespace Worksheet.Services
                 return new SpectralRibbonProcessedData(settings.Id, emptyData, Array.Empty<string>(), isEmpty: true);
             }
 
+            MultiChannelWindowSnapshot snapshot = _buffer.GetSnapshot(channelIndices.ToArray());
             var (scale, offset, isLog, effMin, effMax) = BuildBinTransform(settings, settings.YAxisScaleType);
-            var channelIndices = FeatureSelectionStrategy.FilteredChannelIndices;
 
-            var counts = new double[bins, channelCount];
-
-            Parallel.For(0, channelCount, c =>
+            int channelHash = ComputeChannelHash(channelIndices);
+            SpectralRibbonProcessingState state;
+            lock (_stateLock)
             {
-                ChannelWindowSnapshot snapshot = _buffer.GetSnapshot(channelIndices[c]);
-                var col = new double[bins];
-
-                RunSequential(snapshot, physicalIndex =>
+                if (!_spectralStates.TryGetValue(settings.Id, out state!))
                 {
-                    double value = snapshot.Values[physicalIndex];
-                    col[ToBin(value, scale, offset, isLog, bins, effMin, effMax)]++;
-                });
-
-                for (int b = 0; b < bins; b++)
-                {
-                    int row = (bins - 1) - b;
-                    counts[row, c] = col[b];
+                    state = new SpectralRibbonProcessingState(settings.Id, bins, channelIndices.ToArray(), channelHash, settings.YAxisScaleType, settings.MinValue, settings.MaxValue, snapshot.Capacity);
+                    _spectralStates[settings.Id] = state;
                 }
-            });
-
-            double max = 0;
-            for (int y = 0; y < bins; y++)
-                for (int x = 0; x < channelCount; x++)
-                    if (counts[y, x] > max) max = counts[y, x];
-
-            if (max > 0)
-            {
-                Parallel.For(0, bins, y =>
+                else if (!state.Matches(bins, channelHash, settings.YAxisScaleType, settings.MinValue, settings.MaxValue, snapshot.Capacity))
                 {
-                    for (int x = 0; x < channelCount; x++)
-                    {
-                        double raw = counts[y, x];
-                        counts[y, x] = raw == 0 ? double.NaN : raw / max;
-                    }
-                });
+                    state.Reset(bins, channelIndices.ToArray(), channelHash, settings.YAxisScaleType, settings.MinValue, settings.MaxValue, snapshot.Capacity);
+                    RecordFullRebuild();
+                }
             }
 
-            return new SpectralRibbonProcessedData(settings.Id, counts, Array.Empty<string>(), isEmpty: max <= 0);
-        }
-
-        private static void RunParallel(ChannelWindowSnapshot snapshot, Action<int> action)
-        {
             if (snapshot.Count <= 0)
-                return;
-
-            if (snapshot.IsContiguous)
             {
-                int start = snapshot.StartIndex;
-                Parallel.For(0, snapshot.Count, i => action(start + i));
-                return;
+                state.ClearData(snapshot.EndSequence);
+                return new SpectralRibbonProcessedData(settings.Id, state.Normalized, Array.Empty<string>(), isEmpty: true);
             }
 
-            Parallel.For(0, snapshot.Count, i => action(snapshot.PhysicalIndexAt(i)));
+            if (NeedsRebuild(state.LastProcessedSequence, snapshot))
+            {
+                if (state.LastProcessedSequence < snapshot.StartSequence && state.LastProcessedSequence != 0)
+                    RecordSequenceGap();
+
+                state.ClearData(snapshot.StartSequence);
+                ApplySpectralRange(state, snapshot, snapshot.StartSequence, snapshot.EndSequence, scale, offset, isLog, bins, effMin, effMax);
+                state.LastProcessedSequence = snapshot.EndSequence;
+                RecordFullRebuild();
+            }
+            else
+            {
+                long fromSequence = state.LastProcessedSequence;
+                if (fromSequence < snapshot.EndSequence)
+                {
+                    ApplySpectralRange(state, snapshot, fromSequence, snapshot.EndSequence, scale, offset, isLog, bins, effMin, effMax);
+                    state.LastProcessedSequence = snapshot.EndSequence;
+                    RecordDeltaApplied(snapshot.EndSequence - fromSequence);
+                }
+
+                TrimSpectralToWindow(state, snapshot.Count);
+            }
+
+            NormalizeSpectral(state, bins);
+            return new SpectralRibbonProcessedData(settings.Id, state.Normalized, Array.Empty<string>(), isEmpty: snapshot.Count <= 0);
         }
 
-        private static void RunSequential(ChannelWindowSnapshot snapshot, Action<int> action)
+        private static void ApplySpectralRange(
+            SpectralRibbonProcessingState state,
+            MultiChannelWindowSnapshot snapshot,
+            long fromSequence,
+            long toSequence,
+            double scale,
+            double offset,
+            bool isLog,
+            int bins,
+            double effMin,
+            double effMax)
         {
-            if (snapshot.Count <= 0)
-                return;
-
-            if (snapshot.IsContiguous)
+            int channelCount = state.ChannelCount;
+            for (long sequence = fromSequence; sequence < toSequence; sequence++)
             {
-                int end = snapshot.StartIndex + snapshot.Count;
-                for (int physicalIndex = snapshot.StartIndex; physicalIndex < end; physicalIndex++)
-                    action(physicalIndex);
-                return;
-            }
+                if (state.RingCount == state.RingRows.GetLength(0))
+                    EvictOldestSpectralContribution(state);
 
-            for (int i = 0; i < snapshot.Count; i++)
-                action(snapshot.PhysicalIndexAt(i));
+                int writeIndex = (state.RingStart + state.RingCount) % state.RingRows.GetLength(0);
+                int physicalIndex = snapshot.PhysicalIndexForSequence(sequence);
+                for (int c = 0; c < channelCount; c++)
+                {
+                    double value = snapshot.ChannelValues[c][physicalIndex];
+                    int bin = ToBin(value, scale, offset, isLog, bins, effMin, effMax);
+                    int row = (bins - 1) - bin;
+                    state.RawCounts[row, c]++;
+                    state.RingRows[writeIndex, c] = (ushort)row;
+                }
+
+                state.RingCount++;
+            }
         }
 
-        private static void RunParallel(ChannelWindowSnapshot xSnapshot, ChannelWindowSnapshot ySnapshot, int count, Action<int, int> action)
+        private static void EvictOldestSpectralContribution(SpectralRibbonProcessingState state)
         {
-            if (count <= 0)
-                return;
-
-            bool xContiguous = xSnapshot.IsContiguous;
-            bool yContiguous = ySnapshot.IsContiguous;
-            if (xContiguous && yContiguous)
+            int channelCount = state.ChannelCount;
+            int evictIndex = state.RingStart;
+            for (int c = 0; c < channelCount; c++)
             {
-                int xStart = xSnapshot.StartIndex;
-                int yStart = ySnapshot.StartIndex;
-                Parallel.For(0, count, i => action(xStart + i, yStart + i));
+                int row = state.RingRows[evictIndex, c];
+                state.RawCounts[row, c]--;
+            }
+
+            state.RingStart = (state.RingStart + 1) % state.RingRows.GetLength(0);
+            state.RingCount--;
+        }
+
+        private static void TrimSpectralToWindow(SpectralRibbonProcessingState state, int windowCount)
+        {
+            while (state.RingCount > windowCount)
+                EvictOldestSpectralContribution(state);
+        }
+
+        private static void NormalizeSpectral(SpectralRibbonProcessingState state, int bins)
+        {
+            int max = 0;
+            for (int y = 0; y < bins; y++)
+                for (int c = 0; c < state.ChannelCount; c++)
+                    if (state.RawCounts[y, c] > max) max = state.RawCounts[y, c];
+
+            if (max <= 0)
+            {
+                for (int y = 0; y < bins; y++)
+                    for (int c = 0; c < state.ChannelCount; c++)
+                        state.Normalized[y, c] = 0;
                 return;
             }
 
-            Parallel.For(0, count, i => action(xSnapshot.PhysicalIndexAt(i), ySnapshot.PhysicalIndexAt(i)));
+            for (int y = 0; y < bins; y++)
+                for (int c = 0; c < state.ChannelCount; c++)
+                {
+                    int raw = state.RawCounts[y, c];
+                    state.Normalized[y, c] = raw == 0 ? double.NaN : (double)raw / max;
+                }
+        }
+
+        private static bool NeedsRebuild(long lastProcessedSequence, ChannelWindowSnapshot snapshot)
+        {
+            if (lastProcessedSequence == 0)
+                return true;
+            if (lastProcessedSequence < snapshot.StartSequence)
+                return true;
+            if (lastProcessedSequence > snapshot.EndSequence)
+                return true;
+            return false;
+        }
+
+        private static bool NeedsRebuild(long lastProcessedSequence, MultiChannelWindowSnapshot snapshot)
+        {
+            if (lastProcessedSequence == 0)
+                return true;
+            if (lastProcessedSequence < snapshot.StartSequence)
+                return true;
+            if (lastProcessedSequence > snapshot.EndSequence)
+                return true;
+            return false;
+        }
+
+        private static int ComputeChannelHash(IReadOnlyList<int> channels)
+        {
+            unchecked
+            {
+                int hash = 17;
+                for (int i = 0; i < channels.Count; i++)
+                    hash = hash * 31 + channels[i];
+                return hash;
+            }
+        }
+
+        private void RecordDeltaApplied(long deltaCount)
+        {
+            lock (_statsLock)
+            {
+                _deltaAppliedCount += Math.Max(0, deltaCount);
+            }
+        }
+
+        private void RecordFullRebuild()
+        {
+            lock (_statsLock)
+            {
+                _fullRebuildCount++;
+            }
+        }
+
+        private void RecordSequenceGap()
+        {
+            lock (_statsLock)
+            {
+                _sequenceGapCount++;
+            }
+        }
+
+        private sealed class HistogramProcessingState
+        {
+            public HistogramProcessingState(Guid plotId, int binCount, int featureIndex, AxisScaleType axisScaleType, double minValue, double maxValue, int capacity)
+            {
+                PlotId = plotId;
+                Reset(binCount, featureIndex, axisScaleType, minValue, maxValue, capacity);
+            }
+
+            public Guid PlotId { get; }
+            public int BinCount { get; private set; }
+            public int FeatureIndex { get; private set; }
+            public AxisScaleType AxisScaleType { get; private set; }
+            public double MinValue { get; private set; }
+            public double MaxValue { get; private set; }
+            public double[] Counts { get; private set; } = Array.Empty<double>();
+            public int[] RingBins { get; private set; } = Array.Empty<int>();
+            public int RingStart { get; set; }
+            public int RingCount { get; set; }
+            public long LastProcessedSequence { get; set; }
+
+            public bool Matches(int binCount, int featureIndex, AxisScaleType axisScaleType, double minValue, double maxValue, int capacity)
+            {
+                return BinCount == binCount
+                    && FeatureIndex == featureIndex
+                    && AxisScaleType == axisScaleType
+                    && MinValue.Equals(minValue)
+                    && MaxValue.Equals(maxValue)
+                    && RingBins.Length == capacity;
+            }
+
+            public void Reset(int binCount, int featureIndex, AxisScaleType axisScaleType, double minValue, double maxValue, int capacity)
+            {
+                BinCount = binCount;
+                FeatureIndex = featureIndex;
+                AxisScaleType = axisScaleType;
+                MinValue = minValue;
+                MaxValue = maxValue;
+                Counts = new double[binCount];
+                RingBins = new int[capacity];
+                RingStart = 0;
+                RingCount = 0;
+                LastProcessedSequence = 0;
+            }
+
+            public void ClearData(long sequence)
+            {
+                Array.Clear(Counts, 0, Counts.Length);
+                RingStart = 0;
+                RingCount = 0;
+                LastProcessedSequence = sequence;
+            }
+        }
+
+        private sealed class PseudocolorProcessingState
+        {
+            public PseudocolorProcessingState(Guid plotId, int binCount, int xFeature, int yFeature, AxisScaleType xAxisScaleType, AxisScaleType yAxisScaleType, double minValue, double maxValue, int capacity)
+            {
+                PlotId = plotId;
+                Reset(binCount, xFeature, yFeature, xAxisScaleType, yAxisScaleType, minValue, maxValue, capacity);
+            }
+
+            public Guid PlotId { get; }
+            public int BinCount { get; private set; }
+            public int XFeature { get; private set; }
+            public int YFeature { get; private set; }
+            public AxisScaleType XAxisScaleType { get; private set; }
+            public AxisScaleType YAxisScaleType { get; private set; }
+            public double MinValue { get; private set; }
+            public double MaxValue { get; private set; }
+            public int[,] RawCounts { get; private set; } = new int[1, 1];
+            public double[,] Normalized { get; private set; } = new double[1, 1];
+            public int[] RingPackedBins { get; private set; } = Array.Empty<int>();
+            public int RingStart { get; set; }
+            public int RingCount { get; set; }
+            public long LastProcessedSequence { get; set; }
+
+            public bool Matches(int binCount, int xFeature, int yFeature, AxisScaleType xAxisScaleType, AxisScaleType yAxisScaleType, double minValue, double maxValue, int capacity)
+            {
+                return BinCount == binCount
+                    && XFeature == xFeature
+                    && YFeature == yFeature
+                    && XAxisScaleType == xAxisScaleType
+                    && YAxisScaleType == yAxisScaleType
+                    && MinValue.Equals(minValue)
+                    && MaxValue.Equals(maxValue)
+                    && RingPackedBins.Length == capacity;
+            }
+
+            public void Reset(int binCount, int xFeature, int yFeature, AxisScaleType xAxisScaleType, AxisScaleType yAxisScaleType, double minValue, double maxValue, int capacity)
+            {
+                BinCount = binCount;
+                XFeature = xFeature;
+                YFeature = yFeature;
+                XAxisScaleType = xAxisScaleType;
+                YAxisScaleType = yAxisScaleType;
+                MinValue = minValue;
+                MaxValue = maxValue;
+                RawCounts = new int[binCount, binCount];
+                Normalized = new double[binCount, binCount];
+                RingPackedBins = new int[capacity];
+                RingStart = 0;
+                RingCount = 0;
+                LastProcessedSequence = 0;
+            }
+
+            public void ClearData(long sequence)
+            {
+                Array.Clear(RawCounts, 0, RawCounts.Length);
+                RingStart = 0;
+                RingCount = 0;
+                LastProcessedSequence = sequence;
+            }
+        }
+
+        private sealed class SpectralRibbonProcessingState
+        {
+            public SpectralRibbonProcessingState(Guid plotId, int binCount, int[] channels, int channelHash, AxisScaleType axisScaleType, double minValue, double maxValue, int capacity)
+            {
+                PlotId = plotId;
+                Reset(binCount, channels, channelHash, axisScaleType, minValue, maxValue, capacity);
+            }
+
+            public Guid PlotId { get; }
+            public int BinCount { get; private set; }
+            public int ChannelHash { get; private set; }
+            public AxisScaleType AxisScaleType { get; private set; }
+            public double MinValue { get; private set; }
+            public double MaxValue { get; private set; }
+            public int ChannelCount => Channels.Length;
+            public int[] Channels { get; private set; } = Array.Empty<int>();
+            public int[,] RawCounts { get; private set; } = new int[1, 1];
+            public double[,] Normalized { get; private set; } = new double[1, 1];
+            public ushort[,] RingRows { get; private set; } = new ushort[1, 1];
+            public int RingStart { get; set; }
+            public int RingCount { get; set; }
+            public long LastProcessedSequence { get; set; }
+
+            public bool Matches(int binCount, int channelHash, AxisScaleType axisScaleType, double minValue, double maxValue, int capacity)
+            {
+                return BinCount == binCount
+                    && ChannelHash == channelHash
+                    && AxisScaleType == axisScaleType
+                    && MinValue.Equals(minValue)
+                    && MaxValue.Equals(maxValue)
+                    && RingRows.GetLength(0) == capacity;
+            }
+
+            public void Reset(int binCount, int[] channels, int channelHash, AxisScaleType axisScaleType, double minValue, double maxValue, int capacity)
+            {
+                BinCount = binCount;
+                Channels = channels;
+                ChannelHash = channelHash;
+                AxisScaleType = axisScaleType;
+                MinValue = minValue;
+                MaxValue = maxValue;
+                RawCounts = new int[binCount, channels.Length];
+                Normalized = new double[binCount, channels.Length];
+                RingRows = new ushort[capacity, channels.Length];
+                RingStart = 0;
+                RingCount = 0;
+                LastProcessedSequence = 0;
+            }
+
+            public void ClearData(long sequence)
+            {
+                Array.Clear(RawCounts, 0, RawCounts.Length);
+                RingStart = 0;
+                RingCount = 0;
+                LastProcessedSequence = sequence;
+            }
         }
     }
 }
