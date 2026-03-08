@@ -35,8 +35,6 @@ namespace Worksheet.Services
             }
         }
 
-        // Precompute scale/offset and effective clamp bounds once per Process call.
-        // Hot loop calls ToBin which only does a clamp + one multiply + one add (+ Log10 for log scale).
         private static (double scale, double offset, bool isLog, double effMin, double effMax) BuildBinTransform(
             PlotSettings settings, AxisScaleType scaleType)
         {
@@ -54,13 +52,11 @@ namespace Worksheet.Services
                 double offset = -minLog * scale;
                 return (scale, offset, true, min, max);
             }
-            else
-            {
-                if (max <= min) max = min + 1;
-                double scale = bins / (max - min);
-                double offset = -min * scale;
-                return (scale, offset, false, min, max);
-            }
+
+            if (max <= min) max = min + 1;
+            double linearScale = bins / (max - min);
+            double linearOffset = -min * linearScale;
+            return (linearScale, linearOffset, false, min, max);
         }
 
         private static int ToBin(double value, double scale, double offset, bool isLog,
@@ -75,20 +71,20 @@ namespace Worksheet.Services
 
         private ProcessedPlotData ProcessHistogram(PlotSettings settings)
         {
-            _buffer.GetVisible(settings.XFeature, out var values, out int count);
+            ChannelWindowSnapshot snapshot = _buffer.GetSnapshot(settings.XFeature);
             int binCount = settings.GetBinCount();
             var (scale, offset, isLog, effMin, effMax) = BuildBinTransform(settings, settings.XAxisScaleType);
 
-            // Each thread accumulates into its own array — no locks needed.
             var localCounts = new ThreadLocal<double[]>(() => new double[binCount], trackAllValues: true);
 
-            Parallel.For(0, count, i =>
+            RunParallel(snapshot, physicalIndex =>
             {
-                localCounts.Value![ToBin(values[i], scale, offset, isLog, binCount, effMin, effMax)]++;
+                double value = snapshot.Values[physicalIndex];
+                localCounts.Value![ToBin(value, scale, offset, isLog, binCount, effMin, effMax)]++;
             });
 
             var counts = new double[binCount];
-            foreach (var local in localCounts.Values)
+            foreach (double[] local in localCounts.Values)
                 for (int i = 0; i < binCount; i++)
                     counts[i] += local[i];
 
@@ -101,34 +97,27 @@ namespace Worksheet.Services
 
         private ProcessedPlotData ProcessHeatmap(PlotSettings settings)
         {
-            _buffer.GetVisible(settings.XFeature, out var xValues, out int xCount);
-            _buffer.GetVisible(settings.YFeature, out var yValues, out int yCount);
-            int count = Math.Min(xCount, yCount);
+            ChannelWindowSnapshot xSnapshot = _buffer.GetSnapshot(settings.XFeature);
+            ChannelWindowSnapshot ySnapshot = _buffer.GetSnapshot(settings.YFeature);
+            int count = Math.Min(xSnapshot.Count, ySnapshot.Count);
             int bins = settings.GetBinCount();
             bool isEmpty = count <= 0;
 
             var (xScale, xOffset, xIsLog, xEffMin, xEffMax) = BuildBinTransform(settings, settings.XAxisScaleType);
             var (yScale, yOffset, yIsLog, yEffMin, yEffMax) = BuildBinTransform(settings, settings.YAxisScaleType);
 
-            // Thread-local int[,] accumulators (row-major): [y, x]
-            // ScottPlot heatmap intensities are indexed by [row, col] => [y, x].
             var localCounts = new ThreadLocal<int[,]>(() => new int[bins, bins], trackAllValues: true);
 
-            Parallel.For(0, count, i =>
+            RunParallel(xSnapshot, ySnapshot, count, (xPhysicalIndex, yPhysicalIndex) =>
             {
-                int xBin = ToBin(xValues[i], xScale, xOffset, xIsLog, bins, xEffMin, xEffMax);
-                int yBin = ToBin(yValues[i], yScale, yOffset, yIsLog, bins, yEffMin, yEffMax);
-
-                // ScottPlot Heatmap renders row 0 at the TOP by default.
-                // Our bin mapping assumes y=0 is the BOTTOM of the plot, so we flip rows here to
-                // keep the visual heatmap aligned with axes and gate coordinates.
+                int xBin = ToBin(xSnapshot.Values[xPhysicalIndex], xScale, xOffset, xIsLog, bins, xEffMin, xEffMax);
+                int yBin = ToBin(ySnapshot.Values[yPhysicalIndex], yScale, yOffset, yIsLog, bins, yEffMin, yEffMax);
                 int row = (bins - 1) - yBin;
                 localCounts.Value![row, xBin]++;
             });
 
-            // Merge into a flat double[] (row-major) for SIMD-accelerated max via ArrayStatistics.
             var flat = new double[bins * bins];
-            foreach (var local in localCounts.Values)
+            foreach (int[,] local in localCounts.Values)
                 for (int y = 0; y < bins; y++)
                     for (int x = 0; x < bins; x++)
                         flat[y * bins + x] += local[y, x];
@@ -142,20 +131,8 @@ namespace Worksheet.Services
                     for (int x = 0; x < bins; x++)
                     {
                         double raw = flat[y * bins + x];
-                        if (raw == 0)
-                        {
-                            counts[y, x] = double.NaN; // 0 => transparent
-                            continue;
-                        }
-
-                        counts[y, x] = raw / max;
+                        counts[y, x] = raw == 0 ? double.NaN : raw / max;
                     }
-            }
-            else
-            {
-                for (int y = 0; y < bins; y++)
-                    for (int x = 0; x < bins; x++)
-                        counts[y, x] = 0;
             }
 
             return new HeatmapProcessedData(settings.Id, counts, isEmpty);
@@ -178,26 +155,24 @@ namespace Worksheet.Services
 
             var counts = new double[bins, channelCount];
 
-            // Each channel is fully independent — parallelize across channels.
             Parallel.For(0, channelCount, c =>
             {
-                _buffer.GetVisible(channelIndices[c], out var values, out int count);
+                ChannelWindowSnapshot snapshot = _buffer.GetSnapshot(channelIndices[c]);
                 var col = new double[bins];
 
-                for (int i = 0; i < count; i++)
-                    col[ToBin(values[i], scale, offset, isLog, bins, effMin, effMax)]++;
+                RunSequential(snapshot, physicalIndex =>
+                {
+                    double value = snapshot.Values[physicalIndex];
+                    col[ToBin(value, scale, offset, isLog, bins, effMin, effMax)]++;
+                });
 
-                // Each c is unique so writing distinct columns is race-free.
                 for (int b = 0; b < bins; b++)
                 {
-                    // ScottPlot Heatmap renders row 0 at the TOP by default.
-                    // Flip rows so y=0 (bin 0) appears at the bottom of the plot.
                     int row = (bins - 1) - b;
                     counts[row, c] = col[b];
                 }
             });
 
-            // Max over all cells then normalize.
             double max = 0;
             for (int y = 0; y < bins; y++)
                 for (int x = 0; x < channelCount; x++)
@@ -210,24 +185,62 @@ namespace Worksheet.Services
                     for (int x = 0; x < channelCount; x++)
                     {
                         double raw = counts[y, x];
-                        if (raw == 0)
-                        {
-                            counts[y, x] = double.NaN; // 0 => transparent
-                            continue;
-                        }
-
-                        counts[y, x] = raw / max;
+                        counts[y, x] = raw == 0 ? double.NaN : raw / max;
                     }
                 });
             }
-            else
-            {
-                for (int y = 0; y < bins; y++)
-                    for (int x = 0; x < channelCount; x++)
-                        counts[y, x] = 0;
-            }
 
             return new SpectralRibbonProcessedData(settings.Id, counts, Array.Empty<string>(), isEmpty: max <= 0);
+        }
+
+        private static void RunParallel(ChannelWindowSnapshot snapshot, Action<int> action)
+        {
+            if (snapshot.Count <= 0)
+                return;
+
+            if (snapshot.IsContiguous)
+            {
+                int start = snapshot.StartIndex;
+                Parallel.For(0, snapshot.Count, i => action(start + i));
+                return;
+            }
+
+            Parallel.For(0, snapshot.Count, i => action(snapshot.PhysicalIndexAt(i)));
+        }
+
+        private static void RunSequential(ChannelWindowSnapshot snapshot, Action<int> action)
+        {
+            if (snapshot.Count <= 0)
+                return;
+
+            if (snapshot.IsContiguous)
+            {
+                int end = snapshot.StartIndex + snapshot.Count;
+                for (int physicalIndex = snapshot.StartIndex; physicalIndex < end; physicalIndex++)
+                    action(physicalIndex);
+                return;
+            }
+
+            for (int i = 0; i < snapshot.Count; i++)
+                action(snapshot.PhysicalIndexAt(i));
+        }
+
+        private static void RunParallel(ChannelWindowSnapshot xSnapshot, ChannelWindowSnapshot ySnapshot, int count, Action<int, int> action)
+        {
+            if (count <= 0)
+                return;
+
+            bool xContiguous = xSnapshot.IsContiguous;
+            bool yContiguous = ySnapshot.IsContiguous;
+            if (xContiguous && yContiguous)
+            {
+                int xStart = xSnapshot.StartIndex;
+                int yStart = ySnapshot.StartIndex;
+                Parallel.For(0, count, i => action(xStart + i, yStart + i));
+                return;
+            }
+
+            Parallel.For(0, count, i => action(xSnapshot.PhysicalIndexAt(i), ySnapshot.PhysicalIndexAt(i)));
         }
     }
 }

@@ -28,12 +28,7 @@ namespace Worksheet.Services
 
         public void SetStreamingEnabled(bool enabled) => _dataSource.SetStreamingEnabled(enabled);
 
-        public double[] Get(int featureIndex) => _dataSource.Get(featureIndex);
-
-        public int GetVisibleLength(int featureIndex) => _dataSource.GetVisibleLength(featureIndex);
-
-        public void GetVisible(int featureIndex, out double[] values, out int visibleLength) =>
-            _dataSource.GetVisible(featureIndex, out values, out visibleLength);
+        public ChannelWindowSnapshot GetSnapshot(int featureIndex) => _dataSource.GetSnapshot(featureIndex);
     }
 }
 

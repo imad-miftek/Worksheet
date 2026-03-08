@@ -20,14 +20,16 @@ namespace Worksheet.Services
         private readonly ProcessingEngine _processingEngine;
         private readonly RenderingEngine _renderingEngine;
         private readonly FeatureSelectionStrategy _featureSelection;
+        private readonly ChasmOptions _chasmOptions;
 
         public ViewportSession(Dispatcher dispatcher, TimeSpan processingInterval, TimeSpan renderingInterval)
         {
             _dispatcher = dispatcher;
             _dataStore = new DataStore();
-            _dataSource = new DataSource();
+            _chasmOptions = ChasmOptions.Default;
+            _dataSource = new DataSource(_chasmOptions.WindowCapacityEvents);
             _chasmDataSource = new ChasmDataSource(_dataSource);
-            var producer = new MockProducer(ChasmOptions.Default);
+            var producer = new MockProducer(_chasmOptions);
             var consumer = new ChasmConsumer(producer.Reader, _chasmDataSource);
             _chasm = new Chasm(producer, consumer, _chasmDataSource);
 

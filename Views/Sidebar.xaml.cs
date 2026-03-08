@@ -48,6 +48,7 @@ namespace Worksheet.Views
             StartStreamingButton.IsEnabled = !isStreamingEnabled;
             StopStreamingButton.IsEnabled = isStreamingEnabled;
             StreamingStatusText.Text = isStreamingEnabled ? "Status: Running" : "Status: Stopped";
+            StreamingStatusText.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString(isStreamingEnabled ? "#166534" : "#991B1B"));
         }
 
         public void SetGateStatsRows(IEnumerable<GateStatsDisplayRow> rows)
