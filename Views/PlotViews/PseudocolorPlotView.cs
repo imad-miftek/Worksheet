@@ -130,6 +130,7 @@ namespace Worksheet.Views.PlotViews
                 return;
 
             _heatmap = plot.Plot.Add.Heatmap(initialData);
+            _heatmap.Smooth = false;
             _heatmap.Extent = new ScottPlot.CoordinateRect(0, Settings.GetBinCount(), 0, Settings.GetBinCount());
             _heatmap.Colormap = _colormap;
             _heatmap.NaNCellColor = ScottPlot.Colors.Transparent;
