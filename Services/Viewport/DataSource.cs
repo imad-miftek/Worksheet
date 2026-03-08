@@ -37,25 +37,43 @@ namespace Worksheet.Services
             _dataVersion = 1;
         }
 
+        private int ClampFeatureIndex(int featureIndex)
+        {
+            if (_channels.Length == 0)
+                return 0;
+
+            if (featureIndex < 0)
+                return 0;
+            if (featureIndex >= _channels.Length)
+                return _channels.Length - 1;
+
+            return featureIndex;
+        }
+
         public double[] Get(int featureIndex)
         {
             if (_channels.Length == 0)
                 return Array.Empty<double>();
 
-            if (featureIndex < 0)
-                featureIndex = 0;
-            else if (featureIndex >= _channels.Length)
-                featureIndex = _channels.Length - 1;
-
-            return _channels[featureIndex];
+            return _channels[ClampFeatureIndex(featureIndex)];
         }
 
         public int GetVisibleLength(int featureIndex)
         {
-            var channel = Get(featureIndex);
+            int idx = ClampFeatureIndex(featureIndex);
             lock (_lock)
             {
-                return Math.Min(_visibleSampleCount, channel.Length);
+                return Math.Min(_visibleSampleCount, _channels[idx].Length);
+            }
+        }
+
+        public void GetVisible(int featureIndex, out double[] values, out int visibleLength)
+        {
+            int idx = ClampFeatureIndex(featureIndex);
+            lock (_lock)
+            {
+                values = _channels[idx];
+                visibleLength = Math.Min(_visibleSampleCount, values.Length);
             }
         }
 

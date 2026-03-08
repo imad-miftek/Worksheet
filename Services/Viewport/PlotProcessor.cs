@@ -75,8 +75,7 @@ namespace Worksheet.Services
 
         private ProcessedPlotData ProcessHistogram(PlotSettings settings)
         {
-            var values = _buffer.Get(settings.XFeature);
-            int count = _buffer.GetVisibleLength(settings.XFeature);
+            _buffer.GetVisible(settings.XFeature, out var values, out int count);
             int binCount = settings.GetBinCount();
             var (scale, offset, isLog, effMin, effMax) = BuildBinTransform(settings, settings.XAxisScaleType);
 
@@ -102,10 +101,8 @@ namespace Worksheet.Services
 
         private ProcessedPlotData ProcessHeatmap(PlotSettings settings)
         {
-            var xValues = _buffer.Get(settings.XFeature);
-            var yValues = _buffer.Get(settings.YFeature);
-            int xCount = _buffer.GetVisibleLength(settings.XFeature);
-            int yCount = _buffer.GetVisibleLength(settings.YFeature);
+            _buffer.GetVisible(settings.XFeature, out var xValues, out int xCount);
+            _buffer.GetVisible(settings.YFeature, out var yValues, out int yCount);
             int count = Math.Min(xCount, yCount);
             int bins = settings.GetBinCount();
             bool isEmpty = count <= 0;
@@ -184,8 +181,7 @@ namespace Worksheet.Services
             // Each channel is fully independent — parallelize across channels.
             Parallel.For(0, channelCount, c =>
             {
-                var values = _buffer.Get(channelIndices[c]);
-                int count = _buffer.GetVisibleLength(channelIndices[c]);
+                _buffer.GetVisible(channelIndices[c], out var values, out int count);
                 var col = new double[bins];
 
                 for (int i = 0; i < count; i++)

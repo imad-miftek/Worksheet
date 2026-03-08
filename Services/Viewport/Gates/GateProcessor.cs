@@ -45,8 +45,7 @@ namespace Worksheet.Services.Viewport.Gates
 
             var mask = BuildRectangleMask1D(bins, binGeo.XMin, binGeo.XMax);
 
-            var values = _buffer.Get(settings.XFeature);
-            int total = _buffer.GetVisibleLength(settings.XFeature);
+            _buffer.GetVisible(settings.XFeature, out var values, out int total);
             if (total <= 0)
                 return EmptyResultWithTotal(gate, settings, dataVersion, total);
 
@@ -93,10 +92,8 @@ namespace Worksheet.Services.Viewport.Gates
             var binGeo = gate.Geometry.ToBinGeometry(bins);
             var mask2d = BuildMask2D(bins, binGeo);
 
-            var xValues = _buffer.Get(settings.XFeature);
-            var yValues = _buffer.Get(settings.YFeature);
-            int xCount = _buffer.GetVisibleLength(settings.XFeature);
-            int yCount = _buffer.GetVisibleLength(settings.YFeature);
+            _buffer.GetVisible(settings.XFeature, out var xValues, out int xCount);
+            _buffer.GetVisible(settings.YFeature, out var yValues, out int yCount);
             int total = Math.Min(xCount, yCount);
             if (total <= 0)
                 return EmptyResultWithTotal(gate, settings, dataVersion, total);
