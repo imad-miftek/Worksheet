@@ -537,6 +537,18 @@ namespace Worksheet.Views
             }
         }
 
+        public ProcessingStatusSnapshot GetProcessingStatusSnapshot()
+        {
+            try
+            {
+                return _viewportSession.GetProcessingStatusSnapshot();
+            }
+            catch
+            {
+                return new ProcessingStatusSnapshot();
+            }
+        }
+
         private void ClearAllPlotVisuals()
         {
             // Clear each plot view directly. This does not depend on the processing/rendering pipeline.

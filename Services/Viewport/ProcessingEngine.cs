@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using Worksheet.Models;
 using Worksheet.Models.Gates;
@@ -15,6 +16,13 @@ namespace Worksheet.Services
         private readonly Func<long> _getDataVersion;
         private readonly Dictionary<Guid, SettingsFingerprint> _lastProcessedSettings = new();
         private readonly Dictionary<Guid, GateFingerprint> _lastProcessedGates = new();
+        private readonly object _metricsLock = new();
+        private double _histComputeTotalMs;
+        private long _histComputeCount;
+        private double _pcComputeTotalMs;
+        private long _pcComputeCount;
+        private double _srComputeTotalMs;
+        private long _srComputeCount;
 
         public ProcessingEngine(DataStore dataStore, PlotProcessor plotProcessor, GateProcessor gateProcessor, Func<long> getDataVersion, TimeSpan interval)
             : base(interval)
@@ -40,7 +48,11 @@ namespace Worksheet.Services
                 if (_lastProcessedSettings.TryGetValue(plotSettings.Id, out var previous) && previous.Equals(fingerprint))
                     continue;
 
+                var stopwatch = Stopwatch.StartNew();
                 var processed = _plotProcessor.Process(plotSettings);
+                stopwatch.Stop();
+                RecordComputeTime(plotSettings.PlotType, stopwatch.Elapsed.TotalMilliseconds);
+
                 if (processed != null)
                 {
                     _dataStore.SetProcessedData(processed);
@@ -81,6 +93,44 @@ namespace Worksheet.Services
             var stale = _lastProcessedGates.Keys.Where(id => !activeGateIds.Contains(id)).ToArray();
             foreach (var id in stale)
                 _lastProcessedGates.Remove(id);
+        }
+
+        public PlotTimingSnapshot GetAverageComputeTimes()
+        {
+            lock (_metricsLock)
+            {
+                return new PlotTimingSnapshot(
+                    HistogramAverageMs: ComputeAverage(_histComputeTotalMs, _histComputeCount),
+                    PseudocolorAverageMs: ComputeAverage(_pcComputeTotalMs, _pcComputeCount),
+                    SpectralRibbonAverageMs: ComputeAverage(_srComputeTotalMs, _srComputeCount));
+            }
+        }
+
+        private void RecordComputeTime(PlotType plotType, double elapsedMs)
+        {
+            lock (_metricsLock)
+            {
+                switch (plotType)
+                {
+                    case PlotType.Histogram:
+                        _histComputeTotalMs += elapsedMs;
+                        _histComputeCount++;
+                        break;
+                    case PlotType.Pseudocolor:
+                        _pcComputeTotalMs += elapsedMs;
+                        _pcComputeCount++;
+                        break;
+                    case PlotType.SpectralRibbon:
+                        _srComputeTotalMs += elapsedMs;
+                        _srComputeCount++;
+                        break;
+                }
+            }
+        }
+
+        private static double ComputeAverage(double totalMs, long count)
+        {
+            return count > 0 ? totalMs / count : 0;
         }
 
         private readonly record struct SettingsFingerprint(

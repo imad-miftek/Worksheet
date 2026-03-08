@@ -21,6 +21,10 @@ namespace Worksheet.Services
         private readonly RenderingEngine _renderingEngine;
         private readonly FeatureSelectionStrategy _featureSelection;
         private readonly ChasmOptions _chasmOptions;
+        private readonly object _eventRateLock = new();
+        private long _lastRateEventCount;
+        private DateTime _lastRateSampleUtc = DateTime.UtcNow;
+        private double _lastEventRatePerSecond;
 
         public ViewportSession(Dispatcher dispatcher, TimeSpan processingInterval, TimeSpan renderingInterval)
         {
@@ -108,6 +112,41 @@ namespace Worksheet.Services
         public void RemoveGate(Guid gateId)
         {
             _dataStore.RemoveGate(gateId);
+        }
+
+        public ProcessingStatusSnapshot GetProcessingStatusSnapshot()
+        {
+            var compute = _processingEngine.GetAverageComputeTimes();
+            var render = _renderingEngine.GetAverageRenderTimes();
+
+            double eventRate;
+            long totalEvents = _dataSource.TotalEventsIngested;
+            var now = DateTime.UtcNow;
+            lock (_eventRateLock)
+            {
+                double seconds = (now - _lastRateSampleUtc).TotalSeconds;
+                if (seconds >= 0.2)
+                {
+                    long deltaEvents = totalEvents - _lastRateEventCount;
+                    _lastEventRatePerSecond = seconds > 0 ? Math.Max(0, deltaEvents / seconds) : 0;
+                    _lastRateEventCount = totalEvents;
+                    _lastRateSampleUtc = now;
+                }
+
+                if (!IsStreamingEnabled)
+                    _lastEventRatePerSecond = 0;
+
+                eventRate = _lastEventRatePerSecond;
+            }
+
+            return new ProcessingStatusSnapshot(
+                EventRatePerSecond: eventRate,
+                HistogramAverageComputeMs: compute.HistogramAverageMs,
+                PseudocolorAverageComputeMs: compute.PseudocolorAverageMs,
+                SpectralRibbonAverageComputeMs: compute.SpectralRibbonAverageMs,
+                HistogramAverageRenderMs: render.HistogramAverageMs,
+                PseudocolorAverageRenderMs: render.PseudocolorAverageMs,
+                SpectralRibbonAverageRenderMs: render.SpectralRibbonAverageMs);
         }
     }
 }

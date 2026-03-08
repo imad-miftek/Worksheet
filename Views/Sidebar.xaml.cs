@@ -14,6 +14,7 @@ using System.Windows.Navigation;
 using System.Windows.Shapes;
 using System.Collections.ObjectModel;
 using Worksheet.Models.Gates;
+using Worksheet.Services;
 
 namespace Worksheet.Views
 {
@@ -62,6 +63,22 @@ namespace Worksheet.Views
             GateStatsRows.Clear();
             foreach (var row in rows)
                 GateStatsRows.Add(row);
+        }
+
+        public void SetProcessingStatus(ProcessingStatusSnapshot status)
+        {
+            EventRateValueText.Text = $"{status.EventRatePerSecond:F0} ev/s";
+            HistogramComputeValueText.Text = FormatMilliseconds(status.HistogramAverageComputeMs);
+            PseudocolorComputeValueText.Text = FormatMilliseconds(status.PseudocolorAverageComputeMs);
+            SpectralComputeValueText.Text = FormatMilliseconds(status.SpectralRibbonAverageComputeMs);
+            HistogramRenderValueText.Text = FormatMilliseconds(status.HistogramAverageRenderMs);
+            PseudocolorRenderValueText.Text = FormatMilliseconds(status.PseudocolorAverageRenderMs);
+            SpectralRenderValueText.Text = FormatMilliseconds(status.SpectralRibbonAverageRenderMs);
+        }
+
+        private static string FormatMilliseconds(double value)
+        {
+            return value > 0 ? $"{value:F2} ms" : "--";
         }
     }
 }

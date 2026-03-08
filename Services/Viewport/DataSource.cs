@@ -11,6 +11,7 @@ namespace Worksheet.Services
         private readonly int _windowCapacity;
         private int _writeIndex;
         private int _count;
+        private long _totalEventsIngested;
         private bool _streamingEnabled;
         private long _dataVersion;
 
@@ -99,6 +100,7 @@ namespace Worksheet.Services
 
                 _writeIndex = (_writeIndex + retainedCount) % _windowCapacity;
                 _count = Math.Min(_count + retainedCount, _windowCapacity);
+                _totalEventsIngested += count;
                 _dataVersion++;
             }
         }
@@ -131,6 +133,17 @@ namespace Worksheet.Services
                 lock (_lock)
                 {
                     return _dataVersion;
+                }
+            }
+        }
+
+        public long TotalEventsIngested
+        {
+            get
+            {
+                lock (_lock)
+                {
+                    return _totalEventsIngested;
                 }
             }
         }
