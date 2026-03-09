@@ -4,13 +4,13 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 
-namespace Worksheet.Views.PlotRendering.Surfaces
+namespace Worksheet.Views.Surfaces
 {
-    public sealed class DynamicBitmapSurface : Image
+    public sealed class DynamicBitmap : Image
     {
         private WriteableBitmap? _bitmap;
 
-        public DynamicBitmapSurface()
+        public DynamicBitmap()
         {
             IsHitTestVisible = false;
             Stretch = Stretch.Fill;

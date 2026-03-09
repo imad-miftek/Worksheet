@@ -4,7 +4,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using ScottPlot.WPF;
 using Worksheet.Models;
-using Worksheet.Views.PlotRendering.Surfaces;
+using Worksheet.Views.Surfaces;
 
 namespace Worksheet.Views.Support
 {
@@ -14,7 +14,7 @@ namespace Worksheet.Views.Support
 
         public PlotContainer CreateContainer(WpfPlot plot, int childIndex, double worksheetWidth)
         {
-            var dynamicSurface = new DynamicBitmapSurface
+            var dynamicSurface = new DynamicBitmap
             {
                 Width = plot.Width,
                 Height = plot.Height

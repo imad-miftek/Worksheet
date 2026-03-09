@@ -4,14 +4,14 @@ using System.Windows.Controls;
 using ScottPlot.WPF;
 using Worksheet.Models;
 using Worksheet.Models.Data;
-using Worksheet.Views.PlotRendering.Surfaces;
+using Worksheet.Views.Surfaces;
 using Worksheet.Views.PlotViews.ContextMenus;
 
 namespace Worksheet.Views.PlotViews
 {
     public abstract class PlotView
     {
-        private DynamicBitmapSurface? _bitmapSurface;
+        private DynamicBitmap? _bitmapSurface;
         private Canvas? _overlayCanvas;
 
         protected PlotView(PlotContextMenu contextMenu, PlotSettings settings)
@@ -47,7 +47,7 @@ namespace Worksheet.Views.PlotViews
             _overlayCanvas = overlay;
         }
 
-        public void AttachBitmapSurface(WpfPlot plot, DynamicBitmapSurface dynamicSurface)
+        public void AttachBitmapSurface(WpfPlot plot, DynamicBitmap dynamicSurface)
         {
             _bitmapSurface = dynamicSurface;
             _bitmapSurface.IsHitTestVisible = false;
@@ -66,7 +66,7 @@ namespace Worksheet.Views.PlotViews
             };
         }
 
-        protected bool TryGetBitmapSurface(out DynamicBitmapSurface surface)
+        protected bool TryGetBitmapSurface(out DynamicBitmap surface)
         {
             surface = _bitmapSurface!;
             return surface != null;
