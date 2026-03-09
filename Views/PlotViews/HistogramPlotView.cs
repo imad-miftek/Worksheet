@@ -19,7 +19,9 @@ namespace Worksheet.Views.PlotViews
         private int _pixelWidth;
         private int _pixelHeight;
         private double _yAxisUpperBound = 10;
+        private const int MinorTicksPerMajorInterval = 4;
         private static readonly double[] NormalizedTickPositions = [0, 0.25, 0.5, 0.75, 1.0];
+        private static readonly double[] NormalizedMinorTickPositions = BuildNormalizedMinorTickPositions();
 
         public Action<GateSettings>? GateSettingsSink { get; set; }
         public Action<Guid>? GateRemovedSink { get; set; }
@@ -134,8 +136,26 @@ namespace Worksheet.Views.PlotViews
             for (int i = 0; i < labels.Length; i++)
                 labels[i] = FormatTickLabel(NormalizedTickPositions[i] * upperBound);
 
-            plot.Plot.Axes.Left.SetTicks(NormalizedTickPositions, labels);
+            plot.Plot.Axes.Left.TickGenerator = new FixedLinearTickGenerator(
+                NormalizedTickPositions,
+                labels,
+                NormalizedMinorTickPositions);
             plot.Plot.Axes.SetLimitsY(0, 1);
+        }
+
+        private static double[] BuildNormalizedMinorTickPositions()
+        {
+            var positions = new List<double>((NormalizedTickPositions.Length - 1) * MinorTicksPerMajorInterval);
+            for (int i = 0; i < NormalizedTickPositions.Length - 1; i++)
+            {
+                double start = NormalizedTickPositions[i];
+                double end = NormalizedTickPositions[i + 1];
+                double step = (end - start) / (MinorTicksPerMajorInterval + 1);
+                for (int minorIndex = 1; minorIndex <= MinorTicksPerMajorInterval; minorIndex++)
+                    positions.Add(start + (step * minorIndex));
+            }
+
+            return positions.ToArray();
         }
 
         private bool UpdateHistogramScale(double[] counts)
