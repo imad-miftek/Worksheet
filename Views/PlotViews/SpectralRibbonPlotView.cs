@@ -4,7 +4,6 @@ using ScottPlot.WPF;
 using Worksheet.Models;
 using Worksheet.Models.Data;
 using Worksheet.Services;
-using Worksheet.Views.PlotRendering.Presenters;
 using Worksheet.Views.PlotViews.Axes;
 using Worksheet.Views.PlotViews.ContextMenus;
 
@@ -12,7 +11,6 @@ namespace Worksheet.Views.PlotViews
 {
     public class SpectralRibbonPlotView : PlotView
     {
-        private readonly SpectralRibbonBitmapPresenter _bitmapPresenter = new();
         private SpectralConfigSnapshot? _lastAppliedConfig;
 
         public SpectralRibbonPlotView(SpectralRibbonPlotContextMenu contextMenu, PlotSettings settings)
@@ -46,10 +44,16 @@ namespace Worksheet.Views.PlotViews
                 ExecuteStaticRefresh(plot);
             }
 
-            if (!TryGetDynamicSurfaceHost(out var surfaceHost))
+            if (!TryGetBitmapSurface(out var surface))
                 return;
 
-            _bitmapPresenter.Present(spectralData, surfaceHost);
+            if (spectralData.IsEmpty)
+            {
+                surface.Clear();
+                return;
+            }
+
+            surface.PresentBitmap(spectralData.PixelBuffer, spectralData.ChannelCount, spectralData.Bins);
         }
 
         public override void Clear(WpfPlot plot)
