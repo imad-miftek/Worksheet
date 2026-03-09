@@ -32,7 +32,7 @@ namespace Worksheet.Views.PlotViews
 
         public override void Configure(WpfPlot plot)
         {
-            plot.Plot.DataBackground.Color = ScottPlot.Color.FromARGB(0);
+            plot.Plot.DataBackground.Color = ScottPlot.Color.FromHex("#FFFFFFFF");
             ApplyAxisTicks(plot, resetLimits: true);
             ApplyAxisLabels(plot);
             _lastAppliedConfig = PlotConfigSnapshot.From(Settings);
@@ -48,7 +48,7 @@ namespace Worksheet.Views.PlotViews
                 ExecuteStaticRefresh(plot);
             }
 
-            if (!TryGetDynamicSurface(out var surface))
+            if (!TryGetBitmapSurface(out var surface))
                 return;
 
             if (heatmapData.IsEmpty)

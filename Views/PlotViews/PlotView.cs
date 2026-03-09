@@ -4,13 +4,14 @@ using System.Windows.Controls;
 using ScottPlot.WPF;
 using Worksheet.Models;
 using Worksheet.Models.Data;
+using Worksheet.Views.Surfaces;
 using Worksheet.Views.PlotViews.ContextMenus;
 
 namespace Worksheet.Views.PlotViews
 {
     public abstract class PlotView
     {
-        private DynamicBitmapSurface? _dynamicSurface;
+        private DynamicBitmap? _bitmapSurface;
         private Canvas? _overlayCanvas;
 
         protected PlotView(PlotContextMenu contextMenu, PlotSettings settings)
@@ -33,7 +34,7 @@ namespace Worksheet.Views.PlotViews
         // Used when memory is cleared while streaming is stopped (no new frames will arrive).
         public virtual void Clear(WpfPlot plot)
         {
-            _dynamicSurface?.Clear();
+            _bitmapSurface?.Clear();
         }
 
         public void AttachContextMenu(PlotItem plotItem)
@@ -46,16 +47,13 @@ namespace Worksheet.Views.PlotViews
             _overlayCanvas = overlay;
         }
 
-        public void AttachDynamicSurface(WpfPlot plot, FrameworkElement dynamicSurface)
+        public void AttachBitmapSurface(WpfPlot plot, DynamicBitmap dynamicSurface)
         {
-            if (dynamicSurface is not DynamicBitmapSurface surface)
-                return;
+            _bitmapSurface = dynamicSurface;
+            _bitmapSurface.IsHitTestVisible = false;
 
-            _dynamicSurface = surface;
-            _dynamicSurface.IsHitTestVisible = false;
-
-            plot.Plot.RenderManager.RenderFinished += (_, __) => UpdateDynamicSurfaceLayout(plot);
-            plot.SizeChanged += (_, __) => UpdateDynamicSurfaceLayout(plot);
+            plot.Plot.RenderManager.RenderFinished += (_, __) => UpdateBitmapSurfaceLayout(plot);
+            plot.SizeChanged += (_, __) => UpdateBitmapSurfaceLayout(plot);
             plot.Loaded += (_, __) =>
             {
                 try
@@ -68,9 +66,9 @@ namespace Worksheet.Views.PlotViews
             };
         }
 
-        protected bool TryGetDynamicSurface(out DynamicBitmapSurface surface)
+        protected bool TryGetBitmapSurface(out DynamicBitmap surface)
         {
-            surface = _dynamicSurface!;
+            surface = _bitmapSurface!;
             return surface != null;
         }
 
@@ -82,7 +80,7 @@ namespace Worksheet.Views.PlotViews
 
         protected void ClearDynamicSurface()
         {
-            _dynamicSurface?.Clear();
+            _bitmapSurface?.Clear();
         }
 
         protected void ExecuteStaticRefresh(WpfPlot plot, Action? configureAction = null)
@@ -94,16 +92,16 @@ namespace Worksheet.Views.PlotViews
             {
                 configureAction?.Invoke();
                 plot.Refresh();
-                UpdateDynamicSurfaceLayout(plot);
+                UpdateBitmapSurfaceLayout(plot);
             }
             catch
             {
             }
         }
 
-        protected void UpdateDynamicSurfaceLayout(WpfPlot plot)
+        protected void UpdateBitmapSurfaceLayout(WpfPlot plot)
         {
-            if (_dynamicSurface == null || plot == null)
+            if (_bitmapSurface == null)
                 return;
 
             try
@@ -118,7 +116,7 @@ namespace Worksheet.Views.PlotViews
                     dataRect.Top / dpi.DpiScaleY,
                     dataRect.Width / dpi.DpiScaleX,
                     dataRect.Height / dpi.DpiScaleY);
-                _dynamicSurface.SetDataRect(rectDip);
+                _bitmapSurface.SetDataRect(rectDip);
             }
             catch
             {

@@ -27,7 +27,7 @@ namespace Worksheet.Views.PlotViews
             if (channelCount <= 0)
                 channelCount = 1;
 
-            plot.Plot.DataBackground.Color = ScottPlot.Color.FromARGB(0);
+            plot.Plot.DataBackground.Color = ScottPlot.Color.FromHex("#FFFFFFFF");
             ApplyAxesAndTicks(plot, bins, channelCount, resetLimits: true);
             _lastAppliedConfig = SpectralConfigSnapshot.Create(Settings, bins, channelCount);
         }
@@ -44,7 +44,7 @@ namespace Worksheet.Views.PlotViews
                 ExecuteStaticRefresh(plot);
             }
 
-            if (!TryGetDynamicSurface(out var surface))
+            if (!TryGetBitmapSurface(out var surface))
                 return;
 
             if (spectralData.IsEmpty)

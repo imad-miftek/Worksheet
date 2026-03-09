@@ -1,4 +1,3 @@
-using System.Globalization;
 using ScottPlot.WPF;
 using Worksheet.Models;
 using Worksheet.Models.Data;
@@ -14,12 +13,12 @@ namespace Worksheet.Views.PlotViews
     {
         private readonly AxisFactory _axisFactory;
         private readonly GateVisualManager _gateVisualManager;
+        private readonly HistogramYAxisItem _yAxisItem = new();
         private HistogramConfigSnapshot? _lastAppliedConfig;
         private byte[] _pixelBuffer = Array.Empty<byte>();
         private int _pixelWidth;
         private int _pixelHeight;
         private double _yAxisUpperBound = 10;
-        private static readonly double[] NormalizedTickPositions = [0, 0.25, 0.5, 0.75, 1.0];
 
         public Action<GateSettings>? GateSettingsSink { get; set; }
         public Action<Guid>? GateRemovedSink { get; set; }
@@ -41,14 +40,14 @@ namespace Worksheet.Views.PlotViews
 
         public override void Configure(WpfPlot plot)
         {
-            plot.Plot.DataBackground.Color = ScottPlot.Color.FromARGB(0);
+            plot.Plot.DataBackground.Color = ScottPlot.Color.FromHex("#FFFFFFFF");
             plot.Plot.Axes.Margins(bottom: 0);
             plot.Plot.Axes.SetLimitsY(0, 1);
             plot.Plot.YLabel("Frequency");
             plot.Plot.XLabel(GetXAxisLabel(Settings.XFeature));
             _axisFactory.Apply(Settings.XAxisScaleType, plot, Settings);
             _yAxisUpperBound = 10;
-            ApplyStaticYAxisTicks(plot, _yAxisUpperBound);
+            _yAxisItem.Apply(plot, _yAxisUpperBound);
             _lastAppliedConfig = HistogramConfigSnapshot.From(Settings);
         }
 
@@ -67,7 +66,7 @@ namespace Worksheet.Views.PlotViews
             bool yTickLabelsChanged = UpdateHistogramScale(histogram.Counts);
             if (staticChanged || yTickLabelsChanged)
             {
-                ExecuteStaticRefresh(plot, () => ApplyStaticYAxisTicks(plot, _yAxisUpperBound));
+                ExecuteStaticRefresh(plot, () => _yAxisItem.Apply(plot, _yAxisUpperBound));
             }
 
             RenderHistogramDynamic(histogram);
@@ -80,7 +79,7 @@ namespace Worksheet.Views.PlotViews
             ExecuteStaticRefresh(plot, () =>
             {
                 plot.Plot.Axes.SetLimitsY(0, 1);
-                ApplyStaticYAxisTicks(plot, _yAxisUpperBound);
+                _yAxisItem.Apply(plot, _yAxisUpperBound);
             });
         }
 
@@ -123,19 +122,9 @@ namespace Worksheet.Views.PlotViews
 
             plot.Plot.XLabel(GetXAxisLabel(Settings.XFeature));
             _axisFactory.Apply(Settings.XAxisScaleType, plot, Settings);
-            ApplyStaticYAxisTicks(plot, _yAxisUpperBound);
+            _yAxisItem.Apply(plot, _yAxisUpperBound);
             _lastAppliedConfig = current;
             return true;
-        }
-
-        private void ApplyStaticYAxisTicks(WpfPlot plot, double upperBound)
-        {
-            var labels = new string[NormalizedTickPositions.Length];
-            for (int i = 0; i < labels.Length; i++)
-                labels[i] = FormatTickLabel(NormalizedTickPositions[i] * upperBound);
-
-            plot.Plot.Axes.Left.SetTicks(NormalizedTickPositions, labels);
-            plot.Plot.Axes.SetLimitsY(0, 1);
         }
 
         private bool UpdateHistogramScale(double[] counts)
@@ -147,7 +136,7 @@ namespace Worksheet.Views.PlotViews
                     maxCount = counts[i];
             }
 
-            double snappedUpperBound = GetSnappedUpperBound(maxCount);
+            double snappedUpperBound = _yAxisItem.GetSnappedUpperBound(maxCount);
             if (snappedUpperBound.Equals(_yAxisUpperBound))
                 return false;
 
@@ -157,7 +146,7 @@ namespace Worksheet.Views.PlotViews
 
         private void RenderHistogramDynamic(HistogramProcessedData histogram)
         {
-            if (!TryGetDynamicSurface(out var surface))
+            if (!TryGetBitmapSurface(out var surface))
                 return;
 
             var dataRect = surface.DataRect;
@@ -222,36 +211,6 @@ namespace Worksheet.Views.PlotViews
             }
 
             surface.PresentBitmap(_pixelBuffer, _pixelWidth, _pixelHeight);
-        }
-
-        private static string FormatTickLabel(double value)
-        {
-            if (value >= 1_000_000)
-                return $"{value / 1_000_000:0.#}M";
-            if (value >= 1_000)
-                return $"{value / 1_000:0.#}k";
-            return value.ToString("0", CultureInfo.InvariantCulture);
-        }
-
-        private static double GetSnappedUpperBound(double maxCount)
-        {
-            if (maxCount <= 0)
-                return 10;
-
-            double padded = Math.Max(10, maxCount * 1.05);
-            double exponent = Math.Floor(Math.Log10(padded));
-            double magnitude = Math.Pow(10, exponent);
-            double normalized = padded / magnitude;
-
-            double snappedNormalized = normalized switch
-            {
-                <= 1 => 1,
-                <= 2 => 2,
-                <= 5 => 5,
-                _ => 10
-            };
-
-            return snappedNormalized * magnitude;
         }
 
         private readonly record struct HistogramConfigSnapshot(

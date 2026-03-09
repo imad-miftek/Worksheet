@@ -1,6 +1,7 @@
 using System.Windows.Controls;
 using ScottPlot.WPF;
 using System.Windows;
+using Worksheet.Views.Surfaces;
 
 namespace Worksheet.Models
 {
@@ -13,6 +14,6 @@ namespace Worksheet.Models
         Border DragLayer,      // Receives mouse events for dragging
         Grid Host,             // Holds dynamic surface + plot + overlay
         WpfPlot StaticPlot,
-        FrameworkElement DynamicSurface
+        DynamicBitmap DynamicSurface
     );
 }
