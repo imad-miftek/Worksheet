@@ -33,9 +33,13 @@ namespace Worksheet.Views.Support
                 Width = plot.Width,
                 Height = plot.Height
             };
-            host.Children.Add(dynamicSurface);
             host.Children.Add(plot);
+            host.Children.Add(dynamicSurface);
             host.Children.Add(overlay);
+
+            Panel.SetZIndex(plot, 0);
+            Panel.SetZIndex(dynamicSurface, 1);
+            Panel.SetZIndex(overlay, 2);
 
             // Outer container canvas (draggable placement on worksheet)
             var container = new Canvas
