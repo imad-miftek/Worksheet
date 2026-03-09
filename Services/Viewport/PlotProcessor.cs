@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using ScottPlot;
 using Worksheet.Models;
 using Worksheet.Models.Data;
 
@@ -8,6 +9,7 @@ namespace Worksheet.Services
 {
     public class PlotProcessor
     {
+        private static readonly byte[] PseudocolorPalette = BuildPseudocolorPalette();
         private readonly IChannelDataBuffer _buffer;
         private readonly object _stateLock = new();
         private readonly Dictionary<Guid, HistogramProcessingState> _histogramStates = new();
@@ -240,7 +242,7 @@ namespace Worksheet.Services
             if (snapshot.Count <= 0)
             {
                 state.ClearData(snapshot.EndSequence);
-                return new HeatmapProcessedData(settings.Id, state.Normalized, isEmpty: true);
+                return new HeatmapProcessedData(settings.Id, state.Normalized, state.PixelBuffer, bins, isEmpty: true);
             }
 
             if (NeedsRebuild(state.LastProcessedSequence, snapshot))
@@ -267,7 +269,7 @@ namespace Worksheet.Services
             }
 
             NormalizePseudocolor(state, bins);
-            return new HeatmapProcessedData(settings.Id, state.Normalized, isEmpty: isEmpty);
+            return new HeatmapProcessedData(settings.Id, state.Normalized, state.PixelBuffer, bins, isEmpty: isEmpty);
         }
 
         private static void ApplyPseudocolorRange(
@@ -342,16 +344,67 @@ namespace Worksheet.Services
             {
                 for (int y = 0; y < bins; y++)
                     for (int x = 0; x < bins; x++)
+                    {
                         state.Normalized[y, x] = 0;
+                        int pixelIndex = ((y * bins) + x) * 4;
+                        state.PixelBuffer[pixelIndex + 0] = 255;
+                        state.PixelBuffer[pixelIndex + 1] = 255;
+                        state.PixelBuffer[pixelIndex + 2] = 255;
+                        state.PixelBuffer[pixelIndex + 3] = 0;
+                    }
                 return;
             }
 
             for (int y = 0; y < bins; y++)
                 for (int x = 0; x < bins; x++)
                 {
+                    int pixelIndex = ((y * bins) + x) * 4;
                     int raw = state.RawCounts[y, x];
-                    state.Normalized[y, x] = raw == 0 ? double.NaN : (double)raw / max;
+                    if (raw == 0)
+                    {
+                        state.Normalized[y, x] = double.NaN;
+                        state.PixelBuffer[pixelIndex + 0] = 255;
+                        state.PixelBuffer[pixelIndex + 1] = 255;
+                        state.PixelBuffer[pixelIndex + 2] = 255;
+                        state.PixelBuffer[pixelIndex + 3] = 0;
+                        continue;
+                    }
+
+                    double normalized = (double)raw / max;
+                    state.Normalized[y, x] = normalized;
+                    int paletteIndex = Math.Clamp((int)Math.Round(normalized * 255), 0, 255);
+                    int paletteOffset = paletteIndex * 4;
+                    state.PixelBuffer[pixelIndex + 0] = PseudocolorPalette[paletteOffset + 0];
+                    state.PixelBuffer[pixelIndex + 1] = PseudocolorPalette[paletteOffset + 1];
+                    state.PixelBuffer[pixelIndex + 2] = PseudocolorPalette[paletteOffset + 2];
+                    state.PixelBuffer[pixelIndex + 3] = PseudocolorPalette[paletteOffset + 3];
                 }
+        }
+
+        private static byte[] BuildPseudocolorPalette()
+        {
+            IColormap colormap;
+            try
+            {
+                colormap = new ScottPlot.Colormaps.Turbo();
+            }
+            catch
+            {
+                colormap = new ScottPlot.Colormaps.Viridis();
+            }
+
+            var palette = new byte[256 * 4];
+            for (int i = 0; i < 256; i++)
+            {
+                var skColor = colormap.GetColor(i / 255.0).ToSKColor();
+                int offset = i * 4;
+                palette[offset + 0] = skColor.Blue;
+                palette[offset + 1] = skColor.Green;
+                palette[offset + 2] = skColor.Red;
+                palette[offset + 3] = 255;
+            }
+
+            return palette;
         }
 
         private ProcessedPlotData ProcessSpectralRibbon(PlotSettings settings)
@@ -363,7 +416,8 @@ namespace Worksheet.Services
             if (channelCount == 0)
             {
                 var emptyData = new double[bins, 1];
-                return new SpectralRibbonProcessedData(settings.Id, emptyData, Array.Empty<string>(), isEmpty: true);
+                var emptyPixels = new byte[bins * 4];
+                return new SpectralRibbonProcessedData(settings.Id, emptyData, emptyPixels, bins, 1, Array.Empty<string>(), isEmpty: true);
             }
 
             MultiChannelWindowSnapshot snapshot = _buffer.GetSnapshot(channelIndices.ToArray());
@@ -388,7 +442,7 @@ namespace Worksheet.Services
             if (snapshot.Count <= 0)
             {
                 state.ClearData(snapshot.EndSequence);
-                return new SpectralRibbonProcessedData(settings.Id, state.Normalized, Array.Empty<string>(), isEmpty: true);
+                return new SpectralRibbonProcessedData(settings.Id, state.Normalized, state.PixelBuffer, bins, state.ChannelCount, Array.Empty<string>(), isEmpty: true);
             }
 
             if (NeedsRebuild(state.LastProcessedSequence, snapshot))
@@ -415,7 +469,7 @@ namespace Worksheet.Services
             }
 
             NormalizeSpectral(state, bins);
-            return new SpectralRibbonProcessedData(settings.Id, state.Normalized, Array.Empty<string>(), isEmpty: snapshot.Count <= 0);
+            return new SpectralRibbonProcessedData(settings.Id, state.Normalized, state.PixelBuffer, bins, state.ChannelCount, Array.Empty<string>(), isEmpty: snapshot.Count <= 0);
         }
 
         private static void ApplySpectralRange(
@@ -482,15 +536,40 @@ namespace Worksheet.Services
             {
                 for (int y = 0; y < bins; y++)
                     for (int c = 0; c < state.ChannelCount; c++)
+                    {
                         state.Normalized[y, c] = 0;
+                        int pixelIndex = ((y * state.ChannelCount) + c) * 4;
+                        state.PixelBuffer[pixelIndex + 0] = 255;
+                        state.PixelBuffer[pixelIndex + 1] = 255;
+                        state.PixelBuffer[pixelIndex + 2] = 255;
+                        state.PixelBuffer[pixelIndex + 3] = 0;
+                    }
                 return;
             }
 
             for (int y = 0; y < bins; y++)
                 for (int c = 0; c < state.ChannelCount; c++)
                 {
+                    int pixelIndex = ((y * state.ChannelCount) + c) * 4;
                     int raw = state.RawCounts[y, c];
-                    state.Normalized[y, c] = raw == 0 ? double.NaN : (double)raw / max;
+                    if (raw == 0)
+                    {
+                        state.Normalized[y, c] = double.NaN;
+                        state.PixelBuffer[pixelIndex + 0] = 255;
+                        state.PixelBuffer[pixelIndex + 1] = 255;
+                        state.PixelBuffer[pixelIndex + 2] = 255;
+                        state.PixelBuffer[pixelIndex + 3] = 0;
+                        continue;
+                    }
+
+                    double normalized = (double)raw / max;
+                    state.Normalized[y, c] = normalized;
+                    int paletteIndex = Math.Clamp((int)Math.Round(normalized * 255), 0, 255);
+                    int paletteOffset = paletteIndex * 4;
+                    state.PixelBuffer[pixelIndex + 0] = PseudocolorPalette[paletteOffset + 0];
+                    state.PixelBuffer[pixelIndex + 1] = PseudocolorPalette[paletteOffset + 1];
+                    state.PixelBuffer[pixelIndex + 2] = PseudocolorPalette[paletteOffset + 2];
+                    state.PixelBuffer[pixelIndex + 3] = PseudocolorPalette[paletteOffset + 3];
                 }
         }
 
@@ -622,6 +701,7 @@ namespace Worksheet.Services
             public double MaxValue { get; private set; }
             public int[,] RawCounts { get; private set; } = new int[1, 1];
             public double[,] Normalized { get; private set; } = new double[1, 1];
+            public byte[] PixelBuffer { get; private set; } = new byte[4];
             public int[] RingPackedBins { get; private set; } = Array.Empty<int>();
             public int RingStart { get; set; }
             public int RingCount { get; set; }
@@ -650,6 +730,7 @@ namespace Worksheet.Services
                 MaxValue = maxValue;
                 RawCounts = new int[binCount, binCount];
                 Normalized = new double[binCount, binCount];
+                PixelBuffer = new byte[binCount * binCount * 4];
                 RingPackedBins = new int[capacity];
                 RingStart = 0;
                 RingCount = 0;
@@ -659,6 +740,7 @@ namespace Worksheet.Services
             public void ClearData(long sequence)
             {
                 Array.Clear(RawCounts, 0, RawCounts.Length);
+                Array.Clear(PixelBuffer, 0, PixelBuffer.Length);
                 RingStart = 0;
                 RingCount = 0;
                 LastProcessedSequence = sequence;
@@ -683,6 +765,7 @@ namespace Worksheet.Services
             public int[] Channels { get; private set; } = Array.Empty<int>();
             public int[,] RawCounts { get; private set; } = new int[1, 1];
             public double[,] Normalized { get; private set; } = new double[1, 1];
+            public byte[] PixelBuffer { get; private set; } = new byte[4];
             public ushort[,] RingRows { get; private set; } = new ushort[1, 1];
             public int RingStart { get; set; }
             public int RingCount { get; set; }
@@ -708,6 +791,7 @@ namespace Worksheet.Services
                 MaxValue = maxValue;
                 RawCounts = new int[binCount, channels.Length];
                 Normalized = new double[binCount, channels.Length];
+                PixelBuffer = new byte[binCount * channels.Length * 4];
                 RingRows = new ushort[capacity, channels.Length];
                 RingStart = 0;
                 RingCount = 0;
@@ -717,6 +801,7 @@ namespace Worksheet.Services
             public void ClearData(long sequence)
             {
                 Array.Clear(RawCounts, 0, RawCounts.Length);
+                Array.Clear(PixelBuffer, 0, PixelBuffer.Length);
                 RingStart = 0;
                 RingCount = 0;
                 LastProcessedSequence = sequence;

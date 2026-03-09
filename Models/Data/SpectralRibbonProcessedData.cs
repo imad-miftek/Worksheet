@@ -7,15 +7,21 @@ namespace Worksheet.Models.Data
 
     public class SpectralRibbonProcessedData : ProcessedPlotData
     {
-        public SpectralRibbonProcessedData(Guid plotId, double[,] data, IReadOnlyList<string> channelNames, bool isEmpty)
+        public SpectralRibbonProcessedData(Guid plotId, double[,] data, byte[] pixelBuffer, int bins, int channelCount, IReadOnlyList<string> channelNames, bool isEmpty)
             : base(plotId, PlotType.SpectralRibbon)
         {
             Data = data;
+            PixelBuffer = pixelBuffer;
+            Bins = bins;
+            ChannelCount = channelCount;
             ChannelNames = channelNames;
             IsEmpty = isEmpty;
         }
 
         public double[,] Data { get; }
+        public byte[] PixelBuffer { get; }
+        public int Bins { get; }
+        public int ChannelCount { get; }
 
         public IReadOnlyList<string> ChannelNames { get; }
 

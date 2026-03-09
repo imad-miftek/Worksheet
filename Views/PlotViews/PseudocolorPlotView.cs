@@ -13,11 +13,9 @@ namespace Worksheet.Views.PlotViews
 {
     public class PseudocolorPlotView : PlotView
     {
-        private ScottPlot.Plottables.Heatmap? _heatmap;
-        private readonly ScottPlot.IColormap _colormap = CreateColormap();
+        private BitmapHeatmapPlottable? _imagePlottable;
         private readonly GateVisualManager _gateVisualManager;
         private PlotConfigSnapshot? _lastAppliedConfig;
-        private double[,]? _emptyIntensities;
         private int _emptyBins;
 
         public Action<GateSettings>? GateSettingsSink { get; set; }
@@ -49,20 +47,21 @@ namespace Worksheet.Views.PlotViews
             RenderOnce(plot, () =>
             {
                 ApplyConfigIfChanged(plot);
-                EnsureHeatmap(plot, heatmapData.Data);
+                EnsureImagePlottable(plot, heatmapData);
 
-                if (_heatmap == null)
+                if (_imagePlottable == null)
                     return;
 
                 if (heatmapData.IsEmpty)
                 {
-                    _heatmap.Opacity = 0;
                     return;
                 }
 
-                _heatmap.Opacity = 1;
-                _heatmap.Intensities = heatmapData.Data;
-                _heatmap.Update();
+                _imagePlottable.SetPixels(
+                    heatmapData.PixelBuffer,
+                    heatmapData.Bins,
+                    heatmapData.Bins,
+                    new ScottPlot.CoordinateRect(0, heatmapData.Bins, 0, heatmapData.Bins));
             });
         }
 
@@ -71,26 +70,7 @@ namespace Worksheet.Views.PlotViews
             RenderOnce(plot, () =>
             {
                 int bins = Settings.GetBinCount();
-                var empty = GetEmptyIntensities(bins);
-
-                if (_heatmap != null)
-                {
-                    bool stillInPlot = plot.Plot.GetPlottables<ScottPlot.Plottables.Heatmap>().Contains(_heatmap);
-                    if (!stillInPlot)
-                        _heatmap = null;
-                }
-
-                if (_heatmap == null)
-                    EnsureHeatmap(plot, empty);
-
-                if (_heatmap == null)
-                    return;
-
-                _heatmap.Opacity = 0;
-                _heatmap.NaNCellColor = ScottPlot.Colors.Transparent;
-                _heatmap.Extent = new ScottPlot.CoordinateRect(0, bins, 0, bins);
-                _heatmap.Intensities = empty;
-                _heatmap.Update();
+                _emptyBins = bins;
             });
         }
 
@@ -124,30 +104,19 @@ namespace Worksheet.Views.PlotViews
 
         internal bool RemoveSelectedGate(PlotItem plotItem) => _gateVisualManager.RemoveSelectedGate(plotItem);
 
-        private void EnsureHeatmap(WpfPlot plot, double[,] initialData)
+        private void EnsureImagePlottable(WpfPlot plot, HeatmapProcessedData heatmapData)
         {
-            if (_heatmap != null)
+            if (_imagePlottable != null)
                 return;
 
-            _heatmap = plot.Plot.Add.Heatmap(initialData);
-            _heatmap.Smooth = false;
-            _heatmap.Extent = new ScottPlot.CoordinateRect(0, Settings.GetBinCount(), 0, Settings.GetBinCount());
-            _heatmap.Colormap = _colormap;
-            _heatmap.NaNCellColor = ScottPlot.Colors.Transparent;
-            _heatmap.Opacity = 1;
-            plot.Plot.MoveToBottom(_heatmap);
-        }
-
-        private double[,] GetEmptyIntensities(int bins)
-        {
-            if (_emptyIntensities != null && _emptyBins == bins)
-                return _emptyIntensities;
-
-            var empty = new double[bins, bins];
-
-            _emptyIntensities = empty;
-            _emptyBins = bins;
-            return empty;
+            _imagePlottable = new BitmapHeatmapPlottable();
+            _imagePlottable.SetPixels(
+                heatmapData.PixelBuffer,
+                heatmapData.Bins,
+                heatmapData.Bins,
+                new ScottPlot.CoordinateRect(0, heatmapData.Bins, 0, heatmapData.Bins));
+            plot.Plot.Add.Plottable(_imagePlottable);
+            plot.Plot.MoveToBottom(_imagePlottable);
         }
 
         private void ApplyConfigIfChanged(WpfPlot plot)
@@ -158,8 +127,7 @@ namespace Worksheet.Views.PlotViews
 
             ApplyAxisTicks(plot, resetLimits: false);
             ApplyAxisLabels(plot);
-            if (_heatmap != null)
-                _heatmap.Extent = new ScottPlot.CoordinateRect(0, Settings.GetBinCount(), 0, Settings.GetBinCount());
+            _emptyBins = Settings.GetBinCount();
 
             _lastAppliedConfig = current;
         }
@@ -243,18 +211,6 @@ namespace Worksheet.Views.PlotViews
             plot.Plot.Grid.MajorLineColor = ScottPlot.Colors.Black.WithOpacity(.15);
             plot.Plot.Grid.MinorLineColor = ScottPlot.Colors.Black.WithOpacity(.05);
             plot.Plot.Grid.MinorLineWidth = 1;
-        }
-
-        private static ScottPlot.IColormap CreateColormap()
-        {
-            try
-            {
-                return new ScottPlot.Colormaps.Turbo();
-            }
-            catch
-            {
-                return new ScottPlot.Colormaps.Viridis();
-            }
         }
 
         private readonly record struct PlotConfigSnapshot(
