@@ -4,6 +4,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using ScottPlot.WPF;
 using Worksheet.Models;
+using Worksheet.Views.PlotViews;
 
 namespace Worksheet.Views.Support
 {
@@ -13,6 +14,12 @@ namespace Worksheet.Views.Support
 
         public PlotContainer CreateContainer(WpfPlot plot, int childIndex, double worksheetWidth)
         {
+            var dynamicSurface = new DynamicBitmapSurface
+            {
+                Width = plot.Width,
+                Height = plot.Height
+            };
+
             // Overlay canvas for thumbs and drag layer
             var overlay = new Canvas
             {
@@ -26,6 +33,7 @@ namespace Worksheet.Views.Support
                 Width = plot.Width,
                 Height = plot.Height
             };
+            host.Children.Add(dynamicSurface);
             host.Children.Add(plot);
             host.Children.Add(overlay);
 
@@ -65,7 +73,7 @@ namespace Worksheet.Views.Support
                 dragLayer.Height = host.Height;
             };
 
-            return new PlotContainer(container, overlay, dragLayer, host);
+            return new PlotContainer(container, overlay, dragLayer, host, plot, dynamicSurface);
         }
     }
 }

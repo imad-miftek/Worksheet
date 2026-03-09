@@ -11,10 +11,7 @@ namespace Worksheet.Views.PlotViews
 {
     public class SpectralRibbonPlotView : PlotView
     {
-        private BitmapHeatmapPlottable? _imagePlottable;
         private SpectralConfigSnapshot? _lastAppliedConfig;
-        private int _emptyBins;
-        private int _emptyChannelCount;
 
         public SpectralRibbonPlotView(SpectralRibbonPlotContextMenu contextMenu, PlotSettings settings)
             : base(contextMenu, settings)
@@ -30,6 +27,7 @@ namespace Worksheet.Views.PlotViews
             if (channelCount <= 0)
                 channelCount = 1;
 
+            plot.Plot.DataBackground.Color = ScottPlot.Color.FromARGB(0);
             ApplyAxesAndTicks(plot, bins, channelCount, resetLimits: true);
             _lastAppliedConfig = SpectralConfigSnapshot.Create(Settings, bins, channelCount);
         }
@@ -39,63 +37,50 @@ namespace Worksheet.Views.PlotViews
             if (data is not SpectralRibbonProcessedData spectralData)
                 return;
 
-            RenderOnce(plot, () =>
+            int bins = spectralData.Bins;
+            int channelCount = spectralData.ChannelCount;
+            if (ApplyConfigIfChanged(plot, bins, channelCount))
             {
-                int bins = spectralData.Bins;
-                int channelCount = spectralData.ChannelCount;
-                ApplyConfigIfChanged(plot, bins, channelCount);
-                EnsureImagePlottable(plot, spectralData);
+                ExecuteStaticRefresh(plot);
+            }
 
-                if (_imagePlottable == null)
-                    return;
+            if (!TryGetDynamicSurface(out var surface))
+                return;
 
-                if (spectralData.IsEmpty)
-                    return;
+            if (spectralData.IsEmpty)
+            {
+                surface.Clear();
+                return;
+            }
 
-                _imagePlottable.SetPixels(
-                    spectralData.PixelBuffer,
-                    spectralData.ChannelCount,
-                    spectralData.Bins,
-                    new ScottPlot.CoordinateRect(0.5, spectralData.ChannelCount - 0.5, 0.5, spectralData.Bins - 0.5));
-            });
+            surface.PresentBitmap(spectralData.PixelBuffer, spectralData.ChannelCount, spectralData.Bins);
         }
 
         public override void Clear(WpfPlot plot)
         {
-            RenderOnce(plot, () =>
-            {
-                int bins = Settings.GetBinCount();
-                int channelCount = FeatureSelectionStrategy.ChannelNames.Count;
-                if (channelCount <= 0)
-                    channelCount = 1;
-                _emptyBins = bins;
-                _emptyChannelCount = channelCount;
-            });
+            ClearDynamicSurface();
         }
 
-        private void ApplyConfigIfChanged(WpfPlot plot, int bins, int channelCount)
+        public override void InvalidateStatic(WpfPlot plot)
+        {
+            int bins = Settings.GetBinCount();
+            int channelCount = FeatureSelectionStrategy.ChannelNames.Count;
+            if (channelCount <= 0)
+                channelCount = 1;
+
+            ApplyConfigIfChanged(plot, bins, channelCount);
+            ExecuteStaticRefresh(plot);
+        }
+
+        private bool ApplyConfigIfChanged(WpfPlot plot, int bins, int channelCount)
         {
             var current = SpectralConfigSnapshot.Create(Settings, bins, channelCount);
             if (_lastAppliedConfig.HasValue && _lastAppliedConfig.Value.Equals(current))
-                return;
+                return false;
 
             ApplyAxesAndTicks(plot, bins, channelCount, resetLimits: false);
             _lastAppliedConfig = current;
-        }
-
-        private void EnsureImagePlottable(WpfPlot plot, SpectralRibbonProcessedData spectralData)
-        {
-            if (_imagePlottable != null)
-                return;
-
-            _imagePlottable = new BitmapHeatmapPlottable();
-            _imagePlottable.SetPixels(
-                spectralData.PixelBuffer,
-                spectralData.ChannelCount,
-                spectralData.Bins,
-                new ScottPlot.CoordinateRect(0.5, spectralData.ChannelCount - 0.5, 0.5, spectralData.Bins - 0.5));
-            plot.Plot.Add.Plottable(_imagePlottable);
-            plot.Plot.MoveToBottom(_imagePlottable);
+            return true;
         }
 
         private void ApplyAxesAndTicks(WpfPlot plot, int bins, int channelCount, bool resetLimits)

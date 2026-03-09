@@ -102,6 +102,7 @@ namespace Worksheet.Views.PlotViews.ContextMenus
                 pseudocolorView.Settings.YAxisScaleType = dialog.SelectedYAxisScale;
                 pseudocolorView.Settings.XFeature = dialog.SelectedXFeatureIndex;
                 pseudocolorView.Settings.YFeature = dialog.SelectedYFeatureIndex;
+                pseudocolorView.InvalidateStatic(plotItem.Plot);
             }
         }
     }

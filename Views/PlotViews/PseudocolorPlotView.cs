@@ -13,10 +13,8 @@ namespace Worksheet.Views.PlotViews
 {
     public class PseudocolorPlotView : PlotView
     {
-        private BitmapHeatmapPlottable? _imagePlottable;
         private readonly GateVisualManager _gateVisualManager;
         private PlotConfigSnapshot? _lastAppliedConfig;
-        private int _emptyBins;
 
         public Action<GateSettings>? GateSettingsSink { get; set; }
         public Action<Guid>? GateRemovedSink { get; set; }
@@ -34,6 +32,7 @@ namespace Worksheet.Views.PlotViews
 
         public override void Configure(WpfPlot plot)
         {
+            plot.Plot.DataBackground.Color = ScottPlot.Color.FromARGB(0);
             ApplyAxisTicks(plot, resetLimits: true);
             ApplyAxisLabels(plot);
             _lastAppliedConfig = PlotConfigSnapshot.From(Settings);
@@ -44,34 +43,32 @@ namespace Worksheet.Views.PlotViews
             if (data is not HeatmapProcessedData heatmapData)
                 return;
 
-            RenderOnce(plot, () =>
+            if (ApplyConfigIfChanged(plot))
             {
-                ApplyConfigIfChanged(plot);
-                EnsureImagePlottable(plot, heatmapData);
+                ExecuteStaticRefresh(plot);
+            }
 
-                if (_imagePlottable == null)
-                    return;
+            if (!TryGetDynamicSurface(out var surface))
+                return;
 
-                if (heatmapData.IsEmpty)
-                {
-                    return;
-                }
+            if (heatmapData.IsEmpty)
+            {
+                surface.Clear();
+                return;
+            }
 
-                _imagePlottable.SetPixels(
-                    heatmapData.PixelBuffer,
-                    heatmapData.Bins,
-                    heatmapData.Bins,
-                    new ScottPlot.CoordinateRect(0, heatmapData.Bins, 0, heatmapData.Bins));
-            });
+            surface.PresentBitmap(heatmapData.PixelBuffer, heatmapData.Bins, heatmapData.Bins);
         }
 
         public override void Clear(WpfPlot plot)
         {
-            RenderOnce(plot, () =>
-            {
-                int bins = Settings.GetBinCount();
-                _emptyBins = bins;
-            });
+            ClearDynamicSurface();
+        }
+
+        public override void InvalidateStatic(WpfPlot plot)
+        {
+            ApplyConfigIfChanged(plot);
+            ExecuteStaticRefresh(plot);
         }
 
         public void AttachGateInteractions(PlotItem plotItem)
@@ -104,32 +101,16 @@ namespace Worksheet.Views.PlotViews
 
         internal bool RemoveSelectedGate(PlotItem plotItem) => _gateVisualManager.RemoveSelectedGate(plotItem);
 
-        private void EnsureImagePlottable(WpfPlot plot, HeatmapProcessedData heatmapData)
-        {
-            if (_imagePlottable != null)
-                return;
-
-            _imagePlottable = new BitmapHeatmapPlottable();
-            _imagePlottable.SetPixels(
-                heatmapData.PixelBuffer,
-                heatmapData.Bins,
-                heatmapData.Bins,
-                new ScottPlot.CoordinateRect(0, heatmapData.Bins, 0, heatmapData.Bins));
-            plot.Plot.Add.Plottable(_imagePlottable);
-            plot.Plot.MoveToBottom(_imagePlottable);
-        }
-
-        private void ApplyConfigIfChanged(WpfPlot plot)
+        private bool ApplyConfigIfChanged(WpfPlot plot)
         {
             var current = PlotConfigSnapshot.From(Settings);
             if (_lastAppliedConfig.HasValue && _lastAppliedConfig.Value.Equals(current))
-                return;
+                return false;
 
             ApplyAxisTicks(plot, resetLimits: false);
             ApplyAxisLabels(plot);
-            _emptyBins = Settings.GetBinCount();
-
             _lastAppliedConfig = current;
+            return true;
         }
 
         private void ApplyAxisLabels(WpfPlot plot)

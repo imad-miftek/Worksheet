@@ -1,4 +1,6 @@
 using System.Windows.Controls;
+using ScottPlot.WPF;
+using System.Windows;
 
 namespace Worksheet.Models
 {
@@ -9,6 +11,8 @@ namespace Worksheet.Models
         Canvas Container,      // Outer draggable element positioned on worksheet
         Canvas Overlay,        // Holds thumbs and drag layer
         Border DragLayer,      // Receives mouse events for dragging
-        Grid Host              // Holds plot + overlay
+        Grid Host,             // Holds dynamic surface + plot + overlay
+        WpfPlot StaticPlot,
+        FrameworkElement DynamicSurface
     );
 }

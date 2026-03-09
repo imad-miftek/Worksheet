@@ -390,6 +390,8 @@ namespace Worksheet.Views
                 histView.GateRemovedSink = gateId => _viewportSession.RemoveGate(gateId);
             }
 
+            plotView?.AttachOverlay(container.Overlay);
+            plotView?.AttachDynamicSurface(plot, container.DynamicSurface);
             plotView?.AttachContextMenu(plotItem);
             _selectionManager.Register(plotItem, plotItem.OnSelect, plotItem.OnDeselect);
 
@@ -457,6 +459,8 @@ namespace Worksheet.Views
                 histView.GateRemovedSink = gateId => _viewportSession.RemoveGate(gateId);
             }
 
+            plotView?.AttachOverlay(container.Overlay);
+            plotView?.AttachDynamicSurface(plot, container.DynamicSurface);
             plotView?.AttachContextMenu(plotItem);
 
             // Register with selection manager
