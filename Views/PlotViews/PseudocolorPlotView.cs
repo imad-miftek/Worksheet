@@ -4,6 +4,7 @@ using ScottPlot.WPF;
 using Worksheet.Models;
 using Worksheet.Models.Data;
 using Worksheet.Models.Gates;
+using Worksheet.Views.PlotRendering.Presenters;
 using Worksheet.Services;
 using Worksheet.Views.PlotViews.Axes;
 using Worksheet.Views.PlotViews.ContextMenus;
@@ -14,6 +15,7 @@ namespace Worksheet.Views.PlotViews
     public class PseudocolorPlotView : PlotView
     {
         private readonly GateVisualManager _gateVisualManager;
+        private readonly PseudocolorBitmapPresenter _bitmapPresenter = new();
         private PlotConfigSnapshot? _lastAppliedConfig;
 
         public Action<GateSettings>? GateSettingsSink { get; set; }
@@ -48,16 +50,10 @@ namespace Worksheet.Views.PlotViews
                 ExecuteStaticRefresh(plot);
             }
 
-            if (!TryGetDynamicSurface(out var surface))
+            if (!TryGetDynamicSurfaceHost(out var surfaceHost))
                 return;
 
-            if (heatmapData.IsEmpty)
-            {
-                surface.Clear();
-                return;
-            }
-
-            surface.PresentBitmap(heatmapData.PixelBuffer, heatmapData.Bins, heatmapData.Bins);
+            _bitmapPresenter.Present(heatmapData, surfaceHost);
         }
 
         public override void Clear(WpfPlot plot)

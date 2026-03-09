@@ -1,9 +1,9 @@
-using System.Globalization;
 using ScottPlot.WPF;
 using Worksheet.Models;
 using Worksheet.Models.Data;
 using Worksheet.Models.Gates;
 using Worksheet.Services;
+using Worksheet.Views.PlotRendering.Presenters;
 using Worksheet.Views.PlotViews.Axes;
 using Worksheet.Views.PlotViews.ContextMenus;
 using Worksheet.Views.Support.Gates;
@@ -14,14 +14,10 @@ namespace Worksheet.Views.PlotViews
     {
         private readonly AxisFactory _axisFactory;
         private readonly GateVisualManager _gateVisualManager;
+        private readonly HistogramBitmapPresenter _bitmapPresenter = new();
+        private readonly HistogramYAxisItem _yAxisItem = new();
         private HistogramConfigSnapshot? _lastAppliedConfig;
-        private byte[] _pixelBuffer = Array.Empty<byte>();
-        private int _pixelWidth;
-        private int _pixelHeight;
         private double _yAxisUpperBound = 10;
-        private const int MinorTicksPerMajorInterval = 4;
-        private static readonly double[] NormalizedTickPositions = [0, 0.25, 0.5, 0.75, 1.0];
-        private static readonly double[] NormalizedMinorTickPositions = BuildNormalizedMinorTickPositions();
 
         public Action<GateSettings>? GateSettingsSink { get; set; }
         public Action<Guid>? GateRemovedSink { get; set; }
@@ -50,7 +46,7 @@ namespace Worksheet.Views.PlotViews
             plot.Plot.XLabel(GetXAxisLabel(Settings.XFeature));
             _axisFactory.Apply(Settings.XAxisScaleType, plot, Settings);
             _yAxisUpperBound = 10;
-            ApplyStaticYAxisTicks(plot, _yAxisUpperBound);
+            _yAxisItem.Apply(plot, _yAxisUpperBound);
             _lastAppliedConfig = HistogramConfigSnapshot.From(Settings);
         }
 
@@ -69,7 +65,7 @@ namespace Worksheet.Views.PlotViews
             bool yTickLabelsChanged = UpdateHistogramScale(histogram.Counts);
             if (staticChanged || yTickLabelsChanged)
             {
-                ExecuteStaticRefresh(plot, () => ApplyStaticYAxisTicks(plot, _yAxisUpperBound));
+                ExecuteStaticRefresh(plot, () => _yAxisItem.Apply(plot, _yAxisUpperBound));
             }
 
             RenderHistogramDynamic(histogram);
@@ -82,7 +78,7 @@ namespace Worksheet.Views.PlotViews
             ExecuteStaticRefresh(plot, () =>
             {
                 plot.Plot.Axes.SetLimitsY(0, 1);
-                ApplyStaticYAxisTicks(plot, _yAxisUpperBound);
+                _yAxisItem.Apply(plot, _yAxisUpperBound);
             });
         }
 
@@ -125,37 +121,9 @@ namespace Worksheet.Views.PlotViews
 
             plot.Plot.XLabel(GetXAxisLabel(Settings.XFeature));
             _axisFactory.Apply(Settings.XAxisScaleType, plot, Settings);
-            ApplyStaticYAxisTicks(plot, _yAxisUpperBound);
+            _yAxisItem.Apply(plot, _yAxisUpperBound);
             _lastAppliedConfig = current;
             return true;
-        }
-
-        private void ApplyStaticYAxisTicks(WpfPlot plot, double upperBound)
-        {
-            var labels = new string[NormalizedTickPositions.Length];
-            for (int i = 0; i < labels.Length; i++)
-                labels[i] = FormatTickLabel(NormalizedTickPositions[i] * upperBound);
-
-            plot.Plot.Axes.Left.TickGenerator = new FixedLinearTickGenerator(
-                NormalizedTickPositions,
-                labels,
-                NormalizedMinorTickPositions);
-            plot.Plot.Axes.SetLimitsY(0, 1);
-        }
-
-        private static double[] BuildNormalizedMinorTickPositions()
-        {
-            var positions = new List<double>((NormalizedTickPositions.Length - 1) * MinorTicksPerMajorInterval);
-            for (int i = 0; i < NormalizedTickPositions.Length - 1; i++)
-            {
-                double start = NormalizedTickPositions[i];
-                double end = NormalizedTickPositions[i + 1];
-                double step = (end - start) / (MinorTicksPerMajorInterval + 1);
-                for (int minorIndex = 1; minorIndex <= MinorTicksPerMajorInterval; minorIndex++)
-                    positions.Add(start + (step * minorIndex));
-            }
-
-            return positions.ToArray();
         }
 
         private bool UpdateHistogramScale(double[] counts)
@@ -167,7 +135,7 @@ namespace Worksheet.Views.PlotViews
                     maxCount = counts[i];
             }
 
-            double snappedUpperBound = GetSnappedUpperBound(maxCount);
+            double snappedUpperBound = _yAxisItem.GetSnappedUpperBound(maxCount);
             if (snappedUpperBound.Equals(_yAxisUpperBound))
                 return false;
 
@@ -177,101 +145,10 @@ namespace Worksheet.Views.PlotViews
 
         private void RenderHistogramDynamic(HistogramProcessedData histogram)
         {
-            if (!TryGetDynamicSurface(out var surface))
+            if (!TryGetDynamicSurfaceHost(out var surfaceHost))
                 return;
 
-            var dataRect = surface.DataRect;
-            int width = Math.Max(1, (int)Math.Ceiling(dataRect.Width));
-            int height = Math.Max(1, (int)Math.Ceiling(dataRect.Height));
-
-            if (width <= 0 || height <= 0)
-            {
-                surface.Clear();
-                return;
-            }
-
-            if (_pixelBuffer.Length != width * height * 4)
-            {
-                _pixelBuffer = new byte[width * height * 4];
-                _pixelWidth = width;
-                _pixelHeight = height;
-            }
-            else
-            {
-                Array.Clear(_pixelBuffer, 0, _pixelBuffer.Length);
-            }
-
-            double maxCount = _yAxisUpperBound <= 0 ? 1 : _yAxisUpperBound;
-            bool hasAnyData = false;
-            int binCount = histogram.Counts.Length;
-
-            for (int i = 0; i < binCount; i++)
-            {
-                double value = histogram.Counts[i];
-                if (value <= 0)
-                    continue;
-
-                hasAnyData = true;
-                int x0 = (int)Math.Floor((double)i / binCount * width);
-                int x1 = (int)Math.Ceiling((double)(i + 1) / binCount * width);
-                x0 = Math.Clamp(x0, 0, width - 1);
-                x1 = Math.Clamp(Math.Max(x0 + 1, x1), 1, width);
-
-                double heightFraction = Math.Clamp(value / maxCount, 0, 1);
-                int filledHeight = Math.Clamp((int)Math.Round(heightFraction * height), 0, height);
-                int yStart = Math.Max(0, height - filledHeight);
-
-                for (int y = yStart; y < height; y++)
-                {
-                    int rowOffset = y * width * 4;
-                    for (int x = x0; x < x1; x++)
-                    {
-                        int pixelIndex = rowOffset + (x * 4);
-                        _pixelBuffer[pixelIndex + 0] = 80;
-                        _pixelBuffer[pixelIndex + 1] = 175;
-                        _pixelBuffer[pixelIndex + 2] = 76;
-                        _pixelBuffer[pixelIndex + 3] = 255;
-                    }
-                }
-            }
-
-            if (!hasAnyData)
-            {
-                surface.Clear();
-                return;
-            }
-
-            surface.PresentBitmap(_pixelBuffer, _pixelWidth, _pixelHeight);
-        }
-
-        private static string FormatTickLabel(double value)
-        {
-            if (value >= 1_000_000)
-                return $"{value / 1_000_000:0.#}M";
-            if (value >= 1_000)
-                return $"{value / 1_000:0.#}k";
-            return value.ToString("0", CultureInfo.InvariantCulture);
-        }
-
-        private static double GetSnappedUpperBound(double maxCount)
-        {
-            if (maxCount <= 0)
-                return 10;
-
-            double padded = Math.Max(10, maxCount * 1.05);
-            double exponent = Math.Floor(Math.Log10(padded));
-            double magnitude = Math.Pow(10, exponent);
-            double normalized = padded / magnitude;
-
-            double snappedNormalized = normalized switch
-            {
-                <= 1 => 1,
-                <= 2 => 2,
-                <= 5 => 5,
-                _ => 10
-            };
-
-            return snappedNormalized * magnitude;
+            _bitmapPresenter.Render(histogram, surfaceHost, _yAxisUpperBound);
         }
 
         private readonly record struct HistogramConfigSnapshot(

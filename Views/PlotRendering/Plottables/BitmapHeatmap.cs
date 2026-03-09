@@ -4,9 +4,9 @@ using System.Runtime.InteropServices;
 using ScottPlot;
 using SkiaSharp;
 
-namespace Worksheet.Views.PlotViews
+namespace Worksheet.Views.PlotRendering.Plottables
 {
-    public sealed class BitmapHeatmapPlottable : IPlottable
+    public sealed class BitmapHeatmap : IPlottable
     {
         private SKBitmap? _bitmap;
         private CoordinateRect _extent;

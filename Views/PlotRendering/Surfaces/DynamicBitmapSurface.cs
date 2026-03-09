@@ -4,7 +4,7 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 
-namespace Worksheet.Views.PlotViews
+namespace Worksheet.Views.PlotRendering.Surfaces
 {
     public sealed class DynamicBitmapSurface : Image
     {

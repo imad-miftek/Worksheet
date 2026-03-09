@@ -4,7 +4,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using ScottPlot.WPF;
 using Worksheet.Models;
-using Worksheet.Views.PlotViews;
+using Worksheet.Views.PlotRendering.Surfaces;
 
 namespace Worksheet.Views.Support
 {
