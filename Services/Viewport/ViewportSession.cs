@@ -20,14 +20,20 @@ namespace Worksheet.Services
         private readonly ProcessingEngine _processingEngine;
         private readonly RenderingEngine _renderingEngine;
         private readonly FeatureSelectionStrategy _featureSelection;
+        private readonly ChasmOptions _chasmOptions;
+        private readonly object _eventRateLock = new();
+        private long _lastRateEventCount;
+        private DateTime _lastRateSampleUtc = DateTime.UtcNow;
+        private double _lastEventRatePerSecond;
 
         public ViewportSession(Dispatcher dispatcher, TimeSpan processingInterval, TimeSpan renderingInterval)
         {
             _dispatcher = dispatcher;
             _dataStore = new DataStore();
-            _dataSource = new DataSource();
+            _chasmOptions = ChasmOptions.Default;
+            _dataSource = new DataSource(_chasmOptions.WindowCapacityEvents);
             _chasmDataSource = new ChasmDataSource(_dataSource);
-            var producer = new MockProducer(ChasmOptions.Default);
+            var producer = new MockProducer(_chasmOptions);
             var consumer = new ChasmConsumer(producer.Reader, _chasmDataSource);
             _chasm = new Chasm(producer, consumer, _chasmDataSource);
 
@@ -90,12 +96,23 @@ namespace Worksheet.Services
         public void ClearMemory()
         {
             _chasm.ClearMemory();
+            _processingEngine.OnDataCleared();
 
             // Clear visuals immediately on the UI thread without relying on a new render cycle.
             if (_dispatcher.CheckAccess())
                 MemoryCleared?.Invoke(this, EventArgs.Empty);
             else
                 _dispatcher.BeginInvoke(() => MemoryCleared?.Invoke(this, EventArgs.Empty));
+        }
+
+        public void ResetProcessingMetrics()
+        {
+            _processingEngine.ResetMetrics();
+        }
+
+        public void ResetRenderMetrics()
+        {
+            _renderingEngine.ResetMetrics();
         }
 
         public void UpsertGate(GateSettings gate)
@@ -106,6 +123,45 @@ namespace Worksheet.Services
         public void RemoveGate(Guid gateId)
         {
             _dataStore.RemoveGate(gateId);
+        }
+
+        public ProcessingStatusSnapshot GetProcessingStatusSnapshot()
+        {
+            var compute = _processingEngine.GetAverageComputeTimes();
+            var render = _renderingEngine.GetAverageRenderTimes();
+            var incremental = _processingEngine.GetIncrementalStats();
+
+            double eventRate;
+            long totalEvents = _dataSource.TotalEventsIngested;
+            var now = DateTime.UtcNow;
+            lock (_eventRateLock)
+            {
+                double seconds = (now - _lastRateSampleUtc).TotalSeconds;
+                if (seconds >= 0.2)
+                {
+                    long deltaEvents = totalEvents - _lastRateEventCount;
+                    _lastEventRatePerSecond = seconds > 0 ? Math.Max(0, deltaEvents / seconds) : 0;
+                    _lastRateEventCount = totalEvents;
+                    _lastRateSampleUtc = now;
+                }
+
+                if (!IsStreamingEnabled)
+                    _lastEventRatePerSecond = 0;
+
+                eventRate = _lastEventRatePerSecond;
+            }
+
+            return new ProcessingStatusSnapshot(
+                EventRatePerSecond: eventRate,
+                HistogramAverageComputeMs: compute.HistogramAverageMs,
+                PseudocolorAverageComputeMs: compute.PseudocolorAverageMs,
+                SpectralRibbonAverageComputeMs: compute.SpectralRibbonAverageMs,
+                HistogramAverageRenderMs: render.HistogramAverageMs,
+                PseudocolorAverageRenderMs: render.PseudocolorAverageMs,
+                SpectralRibbonAverageRenderMs: render.SpectralRibbonAverageMs,
+                DeltaAppliedCount: incremental.DeltaAppliedCount,
+                FullRebuildCount: incremental.FullRebuildCount,
+                SequenceGapCount: incremental.SequenceGapCount);
         }
     }
 }

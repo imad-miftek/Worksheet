@@ -31,12 +31,14 @@ namespace Worksheet.Views
                 try
                 {
                     SidebarControl.SetGateStatsRows(WorksheetGridControl.GetGateStatsRows());
+                    SidebarControl.SetProcessingStatus(WorksheetGridControl.GetProcessingStatusSnapshot());
                 }
                 catch
                 {
                 }
             };
             _gateStatsTimer.Start();
+            SidebarControl.SetProcessingStatus(WorksheetGridControl.GetProcessingStatusSnapshot());
 
             Closed += (_, __) => _gateStatsTimer.Stop();
         }

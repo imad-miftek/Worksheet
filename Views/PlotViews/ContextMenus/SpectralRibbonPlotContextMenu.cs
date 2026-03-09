@@ -40,7 +40,10 @@ namespace Worksheet.Views.PlotViews.ContextMenus
             };
 
             if (dialog.ShowDialog() == true)
+            {
                 spectralRibbonView.Settings.YAxisScaleType = dialog.SelectedYAxisScale;
+                spectralRibbonView.InvalidateStatic(plotItem.Plot);
+            }
         }
     }
 }

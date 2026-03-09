@@ -36,16 +36,15 @@ namespace Worksheet.Services.Viewport.Gates
 
         private GateResult ProcessHistogram(GateSettings gate, PlotSettings settings, long dataVersion, GateProcessorOptions options)
         {
-            // For now we only support rectangle gates for 1D histograms, using X bounds.
             if (gate.GateType != GateType.Rectangle || gate.Geometry.Type != GateType.Rectangle)
                 return EmptyResult(gate, settings, dataVersion);
 
             int bins = settings.GetBinCount();
             var binGeo = gate.Geometry.ToBinGeometry(bins);
-
             var mask = BuildRectangleMask1D(bins, binGeo.XMin, binGeo.XMax);
 
-            _buffer.GetVisible(settings.XFeature, out var values, out int total);
+            ChannelWindowSnapshot snapshot = _buffer.GetSnapshot(settings.XFeature);
+            int total = snapshot.Count;
             if (total <= 0)
                 return EmptyResultWithTotal(gate, settings, dataVersion, total);
 
@@ -56,21 +55,21 @@ namespace Worksheet.Services.Viewport.Gates
             double sumsq = 0;
             List<int>? indices = options.IncludeEventIndices ? new List<int>() : null;
 
-            for (int i = 0; i < total; i++)
+            RunSequential(snapshot, (physicalIndex, logicalIndex) =>
             {
-                double v = values[i];
-                if (!double.IsFinite(v))
-                    continue;
+                double value = snapshot.Values[physicalIndex];
+                if (!double.IsFinite(value))
+                    return;
 
-                int xBin = ToBin(v, scale, offset, isLog, bins, effMin, effMax);
+                int xBin = ToBin(value, scale, offset, isLog, bins, effMin, effMax);
                 if (!mask[xBin])
-                    continue;
+                    return;
 
                 passed++;
-                sum += v;
-                sumsq += v * v;
-                indices?.Add(i);
-            }
+                sum += value;
+                sumsq += value * value;
+                indices?.Add(logicalIndex);
+            });
 
             var stats = Build1DStats(passed, total, sum, sumsq);
 
@@ -92,9 +91,9 @@ namespace Worksheet.Services.Viewport.Gates
             var binGeo = gate.Geometry.ToBinGeometry(bins);
             var mask2d = BuildMask2D(bins, binGeo);
 
-            _buffer.GetVisible(settings.XFeature, out var xValues, out int xCount);
-            _buffer.GetVisible(settings.YFeature, out var yValues, out int yCount);
-            int total = Math.Min(xCount, yCount);
+            ChannelWindowSnapshot xSnapshot = _buffer.GetSnapshot(settings.XFeature);
+            ChannelWindowSnapshot ySnapshot = _buffer.GetSnapshot(settings.YFeature);
+            int total = Math.Min(xSnapshot.Count, ySnapshot.Count);
             if (total <= 0)
                 return EmptyResultWithTotal(gate, settings, dataVersion, total);
 
@@ -108,26 +107,25 @@ namespace Worksheet.Services.Viewport.Gates
             double sumsqY = 0;
             List<int>? indices = options.IncludeEventIndices ? new List<int>() : null;
 
-            for (int i = 0; i < total; i++)
+            RunSequential(xSnapshot, ySnapshot, total, (xPhysicalIndex, yPhysicalIndex, logicalIndex) =>
             {
-                double xv = xValues[i];
-                double yv = yValues[i];
+                double xv = xSnapshot.Values[xPhysicalIndex];
+                double yv = ySnapshot.Values[yPhysicalIndex];
                 if (!double.IsFinite(xv) || !double.IsFinite(yv))
-                    continue;
+                    return;
 
                 int xBin = ToBin(xv, xScale, xOffset, xIsLog, bins, xEffMin, xEffMax);
                 int yBin = ToBin(yv, yScale, yOffset, yIsLog, bins, yEffMin, yEffMax);
-
                 if (!mask2d[yBin, xBin])
-                    continue;
+                    return;
 
                 passed++;
                 sumX += xv;
                 sumsqX += xv * xv;
                 sumY += yv;
                 sumsqY += yv * yv;
-                indices?.Add(i);
-            }
+                indices?.Add(logicalIndex);
+            });
 
             var stats = Build2DStats(passed, total, sumX, sumsqX, sumY, sumsqY);
 
@@ -257,7 +255,7 @@ namespace Worksheet.Services.Viewport.Gates
 
         private static bool[,] BuildMask2D(int bins, GateBinGeometry geo)
         {
-            var mask = new bool[bins, bins]; // [y, x]
+            var mask = new bool[bins, bins];
 
             switch (geo.Type)
             {
@@ -330,7 +328,6 @@ namespace Worksheet.Services.Viewport.Gates
             if (points == null || points.Count < 3)
                 return;
 
-            // Ray casting at cell centers (x+0.5, y+0.5)
             for (int y = 0; y < bins; y++)
             {
                 double py = y + 0.5;
@@ -360,10 +357,10 @@ namespace Worksheet.Services.Viewport.Gates
                     inside = !inside;
                 j = i;
             }
+
             return inside;
         }
 
-        // Keep bin mapping consistent with PlotProcessor.
         private static (double scale, double offset, bool isLog, double effMin, double effMax) BuildBinTransform(
             PlotSettings settings, AxisScaleType scaleType)
         {
@@ -381,13 +378,11 @@ namespace Worksheet.Services.Viewport.Gates
                 double offset = -minLog * scale;
                 return (scale, offset, true, min, max);
             }
-            else
-            {
-                if (max <= min) max = min + 1;
-                double scale = bins / (max - min);
-                double offset = -min * scale;
-                return (scale, offset, false, min, max);
-            }
+
+            if (max <= min) max = min + 1;
+            double linearScale = bins / (max - min);
+            double linearOffset = -min * linearScale;
+            return (linearScale, linearOffset, false, min, max);
         }
 
         private static int ToBin(double value, double scale, double offset, bool isLog,
@@ -399,6 +394,52 @@ namespace Worksheet.Services.Viewport.Gates
             double pos = isLog ? Math.Log10(value) * scale + offset : value * scale + offset;
             return Math.Clamp((int)pos, 0, bins - 1);
         }
+
+        private static void RunSequential(ChannelWindowSnapshot snapshot, Action<int, int> action)
+        {
+            if (snapshot.Count <= 0)
+                return;
+
+            if (snapshot.IsContiguous)
+            {
+                int end = snapshot.StartIndex + snapshot.Count;
+                int logicalIndex = 0;
+                for (int physicalIndex = snapshot.StartIndex; physicalIndex < end; physicalIndex++, logicalIndex++)
+                    action(physicalIndex, logicalIndex);
+                return;
+            }
+
+            for (int logicalIndex = 0; logicalIndex < snapshot.Count; logicalIndex++)
+                action(snapshot.PhysicalIndexAt(logicalIndex), logicalIndex);
+        }
+
+        private static void RunSequential(ChannelWindowSnapshot xSnapshot, ChannelWindowSnapshot ySnapshot, int count, Action<int, int, int> action)
+        {
+            if (count <= 0)
+                return;
+
+            bool xContiguous = xSnapshot.IsContiguous;
+            bool yContiguous = ySnapshot.IsContiguous;
+            if (xContiguous && yContiguous)
+            {
+                int xEnd = xSnapshot.StartIndex + count;
+                int xPhysicalIndex = xSnapshot.StartIndex;
+                int yPhysicalIndex = ySnapshot.StartIndex;
+                int logicalIndex = 0;
+
+                while (xPhysicalIndex < xEnd)
+                {
+                    action(xPhysicalIndex, yPhysicalIndex, logicalIndex);
+                    xPhysicalIndex++;
+                    yPhysicalIndex++;
+                    logicalIndex++;
+                }
+
+                return;
+            }
+
+            for (int logicalIndex = 0; logicalIndex < count; logicalIndex++)
+                action(xSnapshot.PhysicalIndexAt(logicalIndex), ySnapshot.PhysicalIndexAt(logicalIndex), logicalIndex);
+        }
     }
 }
-

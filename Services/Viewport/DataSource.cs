@@ -5,43 +5,31 @@ namespace Worksheet.Services
     public class DataSource
     {
         private const int ChannelCount = 60;
-        private const int PopulationCount = 4;
-        private const double MaxValue = 100_000_000d;
 
         private readonly double[][] _channels;
         private readonly object _lock = new();
-        private int _maxSampleCount;
-        private readonly int _samplesPerTick;
-        private int _visibleSampleCount;
-        private bool _streamingEnabled = false;
+        private readonly int _windowCapacity;
+        private int _writeIndex;
+        private int _count;
+        private long _totalEventsIngested;
+        private bool _streamingEnabled;
         private long _dataVersion;
 
-        // Event-driven populations: every event belongs to one of 4 global populations.
-        // Each channel maps these 4 populations to 1..4 distinct peaks (some populations may share a peak).
-        private readonly Random _rng = new(12345);
-        private readonly double[,] _logMeans = new double[ChannelCount, PopulationCount];
-        private readonly double[,] _logSigmas = new double[ChannelCount, PopulationCount];
-        private readonly double[] _populationWeights = new double[PopulationCount];
-
-        public DataSource()
+        public DataSource(int windowCapacity = 200_000)
         {
+            if (windowCapacity <= 0)
+                throw new ArgumentOutOfRangeException(nameof(windowCapacity));
+
+            _windowCapacity = windowCapacity;
             _channels = new double[ChannelCount][];
             for (int i = 0; i < ChannelCount; i++)
-                _channels[i] = Array.Empty<double>();
+                _channels[i] = new double[_windowCapacity];
 
-            InitializePopulationModel();
-
-            _maxSampleCount = 0;
-            _samplesPerTick = 500;
-            _visibleSampleCount = 0;
             _dataVersion = 1;
         }
 
         private int ClampFeatureIndex(int featureIndex)
         {
-            if (_channels.Length == 0)
-                return 0;
-
             if (featureIndex < 0)
                 return 0;
             if (featureIndex >= _channels.Length)
@@ -50,45 +38,46 @@ namespace Worksheet.Services
             return featureIndex;
         }
 
-        public double[] Get(int featureIndex)
-        {
-            if (_channels.Length == 0)
-                return Array.Empty<double>();
-
-            return _channels[ClampFeatureIndex(featureIndex)];
-        }
-
-        public int GetVisibleLength(int featureIndex)
+        public ChannelWindowSnapshot GetSnapshot(int featureIndex)
         {
             int idx = ClampFeatureIndex(featureIndex);
             lock (_lock)
             {
-                return Math.Min(_visibleSampleCount, _channels[idx].Length);
+                var metadata = CaptureWindowMetadata();
+                return new ChannelWindowSnapshot(
+                    Values: _channels[idx],
+                    StartIndex: metadata.startIndex,
+                    Count: _count,
+                    Capacity: _windowCapacity,
+                    Version: _dataVersion,
+                    StartSequence: metadata.startSequence,
+                    EndSequence: _totalEventsIngested);
             }
         }
 
-        public void GetVisible(int featureIndex, out double[] values, out int visibleLength)
+        public MultiChannelWindowSnapshot GetSnapshot(params int[] featureIndices)
         {
-            int idx = ClampFeatureIndex(featureIndex);
+            if (featureIndices == null || featureIndices.Length == 0)
+                return MultiChannelWindowSnapshot.Empty;
+
             lock (_lock)
             {
-                values = _channels[idx];
-                visibleLength = Math.Min(_visibleSampleCount, values.Length);
-            }
-        }
+                var metadata = CaptureWindowMetadata();
+                var channels = new double[featureIndices.Length][];
+                for (int i = 0; i < featureIndices.Length; i++)
+                {
+                    int idx = ClampFeatureIndex(featureIndices[i]);
+                    channels[i] = _channels[idx];
+                }
 
-        public bool AdvanceStream()
-        {
-            lock (_lock)
-            {
-                if (!_streamingEnabled)
-                    return false;
-
-                EnsureCapacityFor(_visibleSampleCount + _samplesPerTick);
-
-                _visibleSampleCount = Math.Min(_visibleSampleCount + _samplesPerTick, _maxSampleCount);
-                _dataVersion++;
-                return true;
+                return new MultiChannelWindowSnapshot(
+                    ChannelValues: channels,
+                    StartIndex: metadata.startIndex,
+                    Count: _count,
+                    Capacity: _windowCapacity,
+                    Version: _dataVersion,
+                    StartSequence: metadata.startSequence,
+                    EndSequence: _totalEventsIngested);
             }
         }
 
@@ -105,15 +94,14 @@ namespace Worksheet.Services
             lock (_lock)
             {
                 for (int i = 0; i < _channels.Length; i++)
-                    Array.Resize(ref _channels[i], 0);
+                    Array.Clear(_channels[i], 0, _channels[i].Length);
 
-                _maxSampleCount = 0;
-                _visibleSampleCount = 0;
+                _writeIndex = 0;
+                _count = 0;
                 _dataVersion++;
             }
         }
 
-        // CHASM append path: acquisition produces batches and the consumer appends them into the buffer.
         public void AppendBatch(double[][] channels, int count)
         {
             if (channels == null)
@@ -133,21 +121,38 @@ namespace Worksheet.Services
                     throw new ArgumentException($"channels[{c}] length must equal count.", nameof(channels));
             }
 
+            int sourceOffset = Math.Max(0, count - _windowCapacity);
+            int retainedCount = count - sourceOffset;
+            if (retainedCount <= 0)
+                return;
+
             lock (_lock)
             {
-                int start = _maxSampleCount;
-                int newLen = start + count;
-
                 for (int c = 0; c < ChannelCount; c++)
-                    Array.Resize(ref _channels[c], newLen);
+                    CopyIntoRing(_channels[c], channels[c], sourceOffset, retainedCount);
 
-                for (int c = 0; c < ChannelCount; c++)
-                    Array.Copy(channels[c], 0, _channels[c], start, count);
-
-                _maxSampleCount = newLen;
-                _visibleSampleCount = newLen;
+                _writeIndex = (_writeIndex + retainedCount) % _windowCapacity;
+                _count = Math.Min(_count + retainedCount, _windowCapacity);
+                _totalEventsIngested += count;
                 _dataVersion++;
             }
+        }
+
+        private void CopyIntoRing(double[] destination, double[] source, int sourceOffset, int count)
+        {
+            int firstSegment = Math.Min(count, _windowCapacity - _writeIndex);
+            Array.Copy(source, sourceOffset, destination, _writeIndex, firstSegment);
+
+            int remaining = count - firstSegment;
+            if (remaining > 0)
+                Array.Copy(source, sourceOffset + firstSegment, destination, 0, remaining);
+        }
+
+        private (int startIndex, long startSequence) CaptureWindowMetadata()
+        {
+            int startIndex = (_writeIndex - _count + _windowCapacity) % _windowCapacity;
+            long startSequence = _totalEventsIngested - _count;
+            return (startIndex, startSequence);
         }
 
         public bool IsStreamingEnabled
@@ -172,181 +177,14 @@ namespace Worksheet.Services
             }
         }
 
-        private void InitializePopulationModel()
+        public long TotalEventsIngested
         {
-            // Reasonably balanced population weights (avoid tiny populations that won't be visible).
-            double sum = 0;
-            for (int p = 0; p < PopulationCount; p++)
+            get
             {
-                _populationWeights[p] = 0.15 + _rng.NextDouble() * 0.35;
-                sum += _populationWeights[p];
-            }
-            for (int p = 0; p < PopulationCount; p++)
-                _populationWeights[p] /= sum;
-
-            // Enforce variety across channels: 1..4 distinct peaks distributed across 60 channels.
-            var distinctPeakCounts = new int[ChannelCount];
-            for (int i = 0; i < ChannelCount; i++)
-                distinctPeakCounts[i] = 1 + (i % 4);
-            Shuffle(distinctPeakCounts);
-
-            for (int c = 0; c < ChannelCount; c++)
-            {
-                int peakCount = distinctPeakCounts[c];
-                var (distinctMeans, distinctSigmas) = CreateDistinctPeaks(peakCount);
-
-                // Map 4 global populations to 1..4 distinct peaks.
-                // This guarantees at most `peakCount` visible peaks for the channel.
-                int[] popToPeak = peakCount switch
+                lock (_lock)
                 {
-                    1 => new[] { 0, 0, 0, 0 },
-                    2 => new[] { 0, 1, 0, 1 },
-                    3 => new[] { 0, 1, 2, 0 },
-                    _ => new[] { 0, 1, 2, 3 },
-                };
-
-                // Add channel-to-channel variation by shuffling peak identities when multiple peaks exist.
-                if (peakCount > 1)
-                {
-                    int[] peakIds = new int[peakCount];
-                    for (int i = 0; i < peakCount; i++) peakIds[i] = i;
-                    Shuffle(peakIds);
-                    for (int p = 0; p < PopulationCount; p++)
-                        popToPeak[p] = peakIds[popToPeak[p]];
+                    return _totalEventsIngested;
                 }
-
-                for (int p = 0; p < PopulationCount; p++)
-                {
-                    int peakIndex = popToPeak[p];
-                    _logMeans[c, p] = distinctMeans[peakIndex];
-                    _logSigmas[c, p] = distinctSigmas[peakIndex];
-                }
-            }
-        }
-
-        private void EnsureCapacityFor(int requiredVisibleCount)
-        {
-            if (requiredVisibleCount <= _maxSampleCount)
-                return;
-
-            int oldLen = _maxSampleCount;
-            int newLen = requiredVisibleCount;
-            int toFill = newLen - oldLen;
-
-            for (int c = 0; c < _channels.Length; c++)
-                Array.Resize(ref _channels[c], newLen);
-
-            FillEvents(oldLen, toFill);
-            _maxSampleCount = newLen;
-        }
-
-        private void FillEvents(int startEventIndex, int eventCount)
-        {
-            int end = startEventIndex + eventCount;
-            for (int e = startEventIndex; e < end; e++)
-            {
-                int pop = SamplePopulation();
-
-                for (int c = 0; c < ChannelCount; c++)
-                {
-                    double logMean = _logMeans[c, pop];
-                    double logSigma = _logSigmas[c, pop];
-
-                    // "Spread only" noise: sample log-space normal then exponentiate.
-                    double z = NextStandardNormal();
-                    double log10Value = logMean + logSigma * z;
-                    double value = Math.Pow(10, log10Value);
-
-                    if (double.IsNaN(value) || double.IsInfinity(value))
-                        value = MaxValue;
-                    else if (value < 0)
-                        value = 0;
-                    else if (value > MaxValue)
-                        value = MaxValue;
-
-                    _channels[c][e] = value;
-                }
-            }
-        }
-
-        private int SamplePopulation()
-        {
-            double r = _rng.NextDouble();
-            double cdf = 0;
-            for (int p = 0; p < PopulationCount; p++)
-            {
-                cdf += _populationWeights[p];
-                if (r <= cdf)
-                    return p;
-            }
-            return PopulationCount - 1;
-        }
-
-        private double NextStandardNormal()
-        {
-            // Box-Muller transform (polar form not needed here).
-            double u1 = _rng.NextDouble();
-            if (u1 < double.Epsilon) u1 = double.Epsilon;
-            double u2 = _rng.NextDouble();
-            return Math.Sqrt(-2.0 * Math.Log(u1)) * Math.Cos(2.0 * Math.PI * u2);
-        }
-
-        private (double[] means, double[] sigmas) CreateDistinctPeaks(int peakCount)
-        {
-            // log10(value) range for 0..100M is roughly [0..8]. Pick a safe interior range.
-            const double minLog = 0.3;
-            const double maxLog = 7.7;
-
-            var means = new double[peakCount];
-            var sigmas = new double[peakCount];
-
-            if (peakCount == 1)
-            {
-                means[0] = 1.5 + _rng.NextDouble() * 5.0;   // ~30 .. 3e6
-                sigmas[0] = 0.12 + _rng.NextDouble() * 0.10;
-                return (means, sigmas);
-            }
-
-            // Evenly spaced with jitter (ensures separation).
-            double step = (maxLog - minLog) / peakCount;
-            for (int i = 0; i < peakCount; i++)
-            {
-                double center = minLog + (i + 0.5) * step;
-                double jitter = ( _rng.NextDouble() * 2.0 - 1.0) * (step * 0.15);
-                means[i] = Math.Clamp(center + jitter, minLog, maxLog);
-                sigmas[i] = 0.08 + _rng.NextDouble() * 0.16;
-            }
-
-            // Shuffle peak ordering so channels aren't all aligned.
-            Shuffle(means, sigmas);
-            return (means, sigmas);
-        }
-
-        private void Shuffle(int[] values)
-        {
-            for (int i = values.Length - 1; i > 0; i--)
-            {
-                int j = _rng.Next(i + 1);
-                (values[i], values[j]) = (values[j], values[i]);
-            }
-        }
-
-        private void Shuffle(int[] values, int length)
-        {
-            for (int i = length - 1; i > 0; i--)
-            {
-                int j = _rng.Next(i + 1);
-                (values[i], values[j]) = (values[j], values[i]);
-            }
-        }
-
-        private void Shuffle(double[] means, double[] sigmas)
-        {
-            for (int i = means.Length - 1; i > 0; i--)
-            {
-                int j = _rng.Next(i + 1);
-                (means[i], means[j]) = (means[j], means[i]);
-                (sigmas[i], sigmas[j]) = (sigmas[j], sigmas[i]);
             }
         }
     }

@@ -11,12 +11,7 @@ namespace Worksheet.Views.PlotViews
 {
     public class SpectralRibbonPlotView : PlotView
     {
-        private ScottPlot.Plottables.Heatmap? _heatmap;
-        private readonly ScottPlot.IColormap _colormap = CreateColormap();
         private SpectralConfigSnapshot? _lastAppliedConfig;
-        private double[,]? _emptyIntensities;
-        private int _emptyBins;
-        private int _emptyChannelCount;
 
         public SpectralRibbonPlotView(SpectralRibbonPlotContextMenu contextMenu, PlotSettings settings)
             : base(contextMenu, settings)
@@ -32,6 +27,7 @@ namespace Worksheet.Views.PlotViews
             if (channelCount <= 0)
                 channelCount = 1;
 
+            plot.Plot.DataBackground.Color = ScottPlot.Color.FromARGB(0);
             ApplyAxesAndTicks(plot, bins, channelCount, resetLimits: true);
             _lastAppliedConfig = SpectralConfigSnapshot.Create(Settings, bins, channelCount);
         }
@@ -41,97 +37,50 @@ namespace Worksheet.Views.PlotViews
             if (data is not SpectralRibbonProcessedData spectralData)
                 return;
 
-            RenderOnce(plot, () =>
+            int bins = spectralData.Bins;
+            int channelCount = spectralData.ChannelCount;
+            if (ApplyConfigIfChanged(plot, bins, channelCount))
             {
-                int bins = spectralData.Data.GetLength(0);
-                int channelCount = spectralData.Data.GetLength(1);
-                ApplyConfigIfChanged(plot, bins, channelCount);
-                EnsureHeatmap(plot, spectralData.Data, bins, channelCount);
+                ExecuteStaticRefresh(plot);
+            }
 
-                if (_heatmap == null)
-                    return;
+            if (!TryGetDynamicSurface(out var surface))
+                return;
 
-                if (spectralData.IsEmpty)
-                {
-                    _heatmap.Opacity = 0;
-                    return;
-                }
+            if (spectralData.IsEmpty)
+            {
+                surface.Clear();
+                return;
+            }
 
-                _heatmap.Opacity = 1;
-                _heatmap.Intensities = spectralData.Data;
-                _heatmap.Update();
-            });
+            surface.PresentBitmap(spectralData.PixelBuffer, spectralData.ChannelCount, spectralData.Bins);
         }
 
         public override void Clear(WpfPlot plot)
         {
-            RenderOnce(plot, () =>
-            {
-                int bins = Settings.GetBinCount();
-                int channelCount = FeatureSelectionStrategy.ChannelNames.Count;
-                if (channelCount <= 0)
-                    channelCount = 1;
-
-                var empty = GetEmptyIntensities(bins, channelCount);
-
-                if (_heatmap != null)
-                {
-                    bool stillInPlot = plot.Plot.GetPlottables<ScottPlot.Plottables.Heatmap>().Contains(_heatmap);
-                    if (!stillInPlot)
-                        _heatmap = null;
-                }
-
-                if (_heatmap == null)
-                    EnsureHeatmap(plot, empty, bins, channelCount);
-
-                if (_heatmap == null)
-                    return;
-
-                _heatmap.Opacity = 0;
-                _heatmap.NaNCellColor = ScottPlot.Colors.Transparent;
-                _heatmap.Extent = new ScottPlot.CoordinateRect(0.5, channelCount - 0.5, 0.5, bins - 0.5);
-                _heatmap.Intensities = empty;
-                _heatmap.Update();
-            });
+            ClearDynamicSurface();
         }
 
-        private void ApplyConfigIfChanged(WpfPlot plot, int bins, int channelCount)
+        public override void InvalidateStatic(WpfPlot plot)
+        {
+            int bins = Settings.GetBinCount();
+            int channelCount = FeatureSelectionStrategy.ChannelNames.Count;
+            if (channelCount <= 0)
+                channelCount = 1;
+
+            ApplyConfigIfChanged(plot, bins, channelCount);
+            ExecuteStaticRefresh(plot);
+        }
+
+        private bool ApplyConfigIfChanged(WpfPlot plot, int bins, int channelCount)
         {
             var current = SpectralConfigSnapshot.Create(Settings, bins, channelCount);
             if (_lastAppliedConfig.HasValue && _lastAppliedConfig.Value.Equals(current))
-                return;
+                return false;
 
             ApplyAxesAndTicks(plot, bins, channelCount, resetLimits: false);
-            if (_heatmap != null)
-                _heatmap.Extent = new ScottPlot.CoordinateRect(0.5, channelCount - 0.5, 0.5, bins - 0.5);
-
             _lastAppliedConfig = current;
-        }
-
-        private void EnsureHeatmap(WpfPlot plot, double[,] initialData, int bins, int channelCount)
-        {
-            if (_heatmap != null)
-                return;
-
-            _heatmap = plot.Plot.Add.Heatmap(initialData);
-            _heatmap.Smooth = false;
-            _heatmap.Extent = new ScottPlot.CoordinateRect(0.5, channelCount - 0.5, 0.5, bins - 0.5);
-            _heatmap.Colormap = _colormap;
-            _heatmap.NaNCellColor = ScottPlot.Colors.Transparent;
-            _heatmap.Opacity = 1;
-        }
-
-        private double[,] GetEmptyIntensities(int bins, int channelCount)
-        {
-            if (_emptyIntensities != null && _emptyBins == bins && _emptyChannelCount == channelCount)
-                return _emptyIntensities;
-
-            var empty = new double[bins, channelCount];
-
-            _emptyIntensities = empty;
-            _emptyBins = bins;
-            _emptyChannelCount = channelCount;
-            return empty;
+            return true;
         }
 
         private void ApplyAxesAndTicks(WpfPlot plot, int bins, int channelCount, bool resetLimits)
@@ -209,18 +158,6 @@ namespace Worksheet.Views.PlotViews
                     break;
                 default:
                     break;
-            }
-        }
-
-        private static ScottPlot.IColormap CreateColormap()
-        {
-            try
-            {
-                return new ScottPlot.Colormaps.Turbo();
-            }
-            catch
-            {
-                return new ScottPlot.Colormaps.Viridis();
             }
         }
 

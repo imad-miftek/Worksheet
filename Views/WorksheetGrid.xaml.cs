@@ -390,6 +390,8 @@ namespace Worksheet.Views
                 histView.GateRemovedSink = gateId => _viewportSession.RemoveGate(gateId);
             }
 
+            plotView?.AttachOverlay(container.Overlay);
+            plotView?.AttachDynamicSurface(plot, container.DynamicSurface);
             plotView?.AttachContextMenu(plotItem);
             _selectionManager.Register(plotItem, plotItem.OnSelect, plotItem.OnDeselect);
 
@@ -457,6 +459,8 @@ namespace Worksheet.Views
                 histView.GateRemovedSink = gateId => _viewportSession.RemoveGate(gateId);
             }
 
+            plotView?.AttachOverlay(container.Overlay);
+            plotView?.AttachDynamicSurface(plot, container.DynamicSurface);
             plotView?.AttachContextMenu(plotItem);
 
             // Register with selection manager
@@ -493,6 +497,16 @@ namespace Worksheet.Views
         public void ClearMemory()
         {
             _viewportSession.ClearMemory();
+        }
+
+        public void ResetProcessingMetrics()
+        {
+            _viewportSession.ResetProcessingMetrics();
+        }
+
+        public void ResetRenderMetrics()
+        {
+            _viewportSession.ResetRenderMetrics();
         }
 
         public IReadOnlyList<GateStatsDisplayRow> GetGateStatsRows()
@@ -534,6 +548,18 @@ namespace Worksheet.Views
             catch
             {
                 return Array.Empty<GateStatsDisplayRow>();
+            }
+        }
+
+        public ProcessingStatusSnapshot GetProcessingStatusSnapshot()
+        {
+            try
+            {
+                return _viewportSession.GetProcessingStatusSnapshot();
+            }
+            catch
+            {
+                return new ProcessingStatusSnapshot();
             }
         }
 

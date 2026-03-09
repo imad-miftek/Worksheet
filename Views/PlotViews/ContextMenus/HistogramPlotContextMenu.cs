@@ -87,6 +87,7 @@ namespace Worksheet.Views.PlotViews.ContextMenus
             {
                 histogramView.UpdateAxisScale(plotItem, dialog.SelectedAxisScale);
                 histogramView.Settings.XFeature = dialog.SelectedChannelIndex;
+                histogramView.InvalidateStatic(plotItem.Plot);
             }
         }
     }
