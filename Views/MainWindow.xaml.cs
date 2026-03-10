@@ -21,9 +21,11 @@ namespace Worksheet.Views
             ToolbarControl.PseudocolorPlotButtonClicked += Toolbar_PseudocolorPlotButtonClicked;
             ToolbarControl.SpectralRibbonPlotButtonClicked += Toolbar_SpectralRibbonPlotButtonClicked;
             ToolbarControl.OscilloscopePlotButtonClicked += Toolbar_OscilloscopePlotButtonClicked;
+            ToolbarControl.SnapGridChanged += Toolbar_SnapGridChanged;
             SidebarControl.StartStreamingClicked += Sidebar_StartStreamingClicked;
             SidebarControl.StopStreamingClicked += Sidebar_StopStreamingClicked;
             SidebarControl.RollingWindowChanged += Sidebar_RollingWindowChanged;
+            ToolbarControl.SetSnapGridSize(WorksheetGridControl.SnapSize);
             SidebarControl.SetStreamingState(WorksheetGridControl.IsStreamingEnabled);
             SidebarControl.SetRollingWindowValue(WorksheetGridControl.WindowCapacity);
 
@@ -73,6 +75,11 @@ namespace Worksheet.Views
         private void Toolbar_OscilloscopePlotButtonClicked(object? sender, System.EventArgs e)
         {
             WorksheetGridControl.AddPlot(PlotType.Oscilloscope);
+        }
+
+        private void Toolbar_SnapGridChanged(double snapSize)
+        {
+            WorksheetGridControl.SnapSize = snapSize;
         }
 
         private void Sidebar_StartStreamingClicked(object? sender, System.EventArgs e)

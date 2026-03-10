@@ -8,7 +8,7 @@ namespace Worksheet.Views.Support
     public class DragHandler
     {
         public void AttachDrag(Border dragLayer, IWorksheetItem item, Canvas worksheet,
-                               SelectionManager<IWorksheetItem> selectionManager, double snapSize = 0)
+                               SelectionManager<IWorksheetItem> selectionManager, Func<double>? getSnapSize = null)
         {
             double dragOffsetX = 0, dragOffsetY = 0;
 
@@ -36,6 +36,7 @@ namespace Worksheet.Views.Support
                     var pos = e.GetPosition(worksheet);
                     double x = pos.X - dragOffsetX;
                     double y = pos.Y - dragOffsetY;
+                    double snapSize = getSnapSize?.Invoke() ?? 0;
 
                     // Snap to grid if enabled
                     if (snapSize > 0)
@@ -52,6 +53,8 @@ namespace Worksheet.Views.Support
 
             dragLayer.MouseLeftButtonUp += (s, e) =>
             {
+                double snapSize = getSnapSize?.Invoke() ?? 0;
+
                 // Snap on release as well (in case snapping wasn't applied during move)
                 if (snapSize > 0)
                 {
@@ -68,7 +71,11 @@ namespace Worksheet.Views.Support
 
         private static double SnapToGrid(double value, double gridSize)
         {
-            return Math.Round(value / gridSize) * gridSize;
+            double snapIncrement = gridSize / 2.0;
+            if (snapIncrement <= 0)
+                return value;
+
+            return Math.Round(value / snapIncrement) * snapIncrement;
         }
     }
 }

@@ -84,18 +84,18 @@ namespace Worksheet.Views.Support
             }
         }
 
-        public void AttachResize(Thumb[] thumbs, PlotContainer container, WpfPlot plot, double snapSize = 0)
+        public void AttachResize(Thumb[] thumbs, PlotContainer container, WpfPlot plot, Func<double>? getSnapSize = null)
         {
             var (tl, tr, bl, br) = (thumbs[0], thumbs[1], thumbs[2], thumbs[3]);
 
-            AttachResizeToThumb(tl, HorizontalAlignment.Left, VerticalAlignment.Top, container, plot, snapSize);
-            AttachResizeToThumb(tr, HorizontalAlignment.Right, VerticalAlignment.Top, container, plot, snapSize);
-            AttachResizeToThumb(bl, HorizontalAlignment.Left, VerticalAlignment.Bottom, container, plot, snapSize);
-            AttachResizeToThumb(br, HorizontalAlignment.Right, VerticalAlignment.Bottom, container, plot, snapSize);
+            AttachResizeToThumb(tl, HorizontalAlignment.Left, VerticalAlignment.Top, container, plot, getSnapSize);
+            AttachResizeToThumb(tr, HorizontalAlignment.Right, VerticalAlignment.Top, container, plot, getSnapSize);
+            AttachResizeToThumb(bl, HorizontalAlignment.Left, VerticalAlignment.Bottom, container, plot, getSnapSize);
+            AttachResizeToThumb(br, HorizontalAlignment.Right, VerticalAlignment.Bottom, container, plot, getSnapSize);
         }
 
         private void AttachResizeToThumb(Thumb thumb, HorizontalAlignment hAlign, VerticalAlignment vAlign,
-                                          PlotContainer container, WpfPlot plot, double snapSize)
+                                          PlotContainer container, WpfPlot plot, Func<double>? getSnapSize)
         {
             thumb.DragDelta += (_, e) =>
             {
@@ -103,6 +103,7 @@ namespace Worksheet.Views.Support
                 double newH = container.Host.Height;
                 double newX = Canvas.GetLeft(container.Container);
                 double newY = Canvas.GetTop(container.Container);
+                double snapSize = getSnapSize?.Invoke() ?? 0;
 
                 // Horizontal resize
                 if (hAlign == HorizontalAlignment.Left)
@@ -153,7 +154,11 @@ namespace Worksheet.Views.Support
 
         private static double SnapToGrid(double value, double gridSize)
         {
-            return Math.Round(value / gridSize) * gridSize;
+            double snapIncrement = gridSize / 2.0;
+            if (snapIncrement <= 0)
+                return value;
+
+            return Math.Round(value / snapIncrement) * snapIncrement;
         }
 
         private static Thumb MakeThumb(Cursor cursor)

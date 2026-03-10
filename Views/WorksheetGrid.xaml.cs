@@ -365,7 +365,7 @@ namespace Worksheet.Views
 
             var thumbs = _thumbManager.CreateThumbs(container.Overlay);
             _thumbManager.AttachPositioning(plot, thumbs);
-            _thumbManager.AttachResize(thumbs, container, plot, SnapSize);
+            _thumbManager.AttachResize(thumbs, container, plot, () => SnapSize);
 
             var plotItem = new PlotItem(plot, container, thumbs)
             {
@@ -384,7 +384,7 @@ namespace Worksheet.Views
             };
 
             _dragHandler.AttachDrag(container.DragLayer, plotItem,
-                                    WorksheetGridContainer, _selectionManager, SnapSize);
+                                    WorksheetGridContainer, _selectionManager, () => SnapSize);
 
             if (plotView is PseudocolorPlotView pcView)
             {
@@ -432,7 +432,7 @@ namespace Worksheet.Views
             // Create and setup thumbs
             var thumbs = _thumbManager.CreateThumbs(container.Overlay);
             _thumbManager.AttachPositioning(plot, thumbs);
-            _thumbManager.AttachResize(thumbs, container, plot, SnapSize);
+            _thumbManager.AttachResize(thumbs, container, plot, () => SnapSize);
 
             // Create the worksheet item with metadata
             var plotItem = new PlotItem(plot, container, thumbs)
@@ -453,7 +453,7 @@ namespace Worksheet.Views
 
             // Setup drag behavior with snapping
             _dragHandler.AttachDrag(container.DragLayer, plotItem,
-                                    WorksheetGridContainer, _selectionManager, SnapSize);
+                                    WorksheetGridContainer, _selectionManager, () => SnapSize);
 
             // Attach plot-specific context menu
             if (plotView is PseudocolorPlotView pcView)
