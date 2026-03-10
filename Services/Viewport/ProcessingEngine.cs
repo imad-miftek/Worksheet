@@ -97,6 +97,8 @@ namespace Worksheet.Services
             var stale = _lastProcessedGates.Keys.Where(id => !activeGateIds.Contains(id)).ToArray();
             foreach (var id in stale)
                 _lastProcessedGates.Remove(id);
+
+            _gateProcessor.RemoveInactiveStates(activeGateIds);
         }
 
         public PlotTimingSnapshot GetAverageComputeTimes()
@@ -129,6 +131,7 @@ namespace Worksheet.Services
             }
 
             _plotProcessor.ResetIncrementalState();
+            _gateProcessor.ResetIncrementalState();
         }
 
         public void OnDataCleared()
@@ -138,6 +141,7 @@ namespace Worksheet.Services
                 _lastProcessedSettings.Clear();
                 _lastProcessedGates.Clear();
                 _plotProcessor.ResetIncrementalState();
+                _gateProcessor.ResetIncrementalState();
             }
         }
 

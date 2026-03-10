@@ -8,10 +8,48 @@ namespace Worksheet.Services.Viewport.Gates
     public sealed class GateProcessor
     {
         private readonly IChannelDataBuffer _buffer;
+        private readonly object _stateLock = new();
+        private readonly Dictionary<Guid, HistogramGateProcessingState> _histogramStates = new();
+        private readonly Dictionary<Guid, PseudocolorGateProcessingState> _pseudocolorStates = new();
 
         public GateProcessor(IChannelDataBuffer buffer)
         {
             _buffer = buffer;
+        }
+
+        public void ResetIncrementalState()
+        {
+            lock (_stateLock)
+            {
+                _histogramStates.Clear();
+                _pseudocolorStates.Clear();
+            }
+        }
+
+        public void RemoveInactiveStates(ISet<Guid> activeGateIds)
+        {
+            lock (_stateLock)
+            {
+                var staleHistogramIds = new List<Guid>();
+                foreach (var gateId in _histogramStates.Keys)
+                {
+                    if (!activeGateIds.Contains(gateId))
+                        staleHistogramIds.Add(gateId);
+                }
+
+                foreach (var gateId in staleHistogramIds)
+                    _histogramStates.Remove(gateId);
+
+                var stalePseudocolorIds = new List<Guid>();
+                foreach (var gateId in _pseudocolorStates.Keys)
+                {
+                    if (!activeGateIds.Contains(gateId))
+                        stalePseudocolorIds.Add(gateId);
+                }
+
+                foreach (var gateId in stalePseudocolorIds)
+                    _pseudocolorStates.Remove(gateId);
+            }
         }
 
         public GateResult Process(GateSettings gate, PlotSettings plotSettings, long dataVersion, GateProcessorOptions? options = null)
@@ -49,11 +87,131 @@ namespace Worksheet.Services.Viewport.Gates
                 return EmptyResultWithTotal(gate, settings, dataVersion, total);
 
             var (scale, offset, isLog, effMin, effMax) = BuildBinTransform(settings, settings.XAxisScaleType);
+            if (options.IncludeEventIndices)
+                return ProcessHistogramFullScan(gate, settings, dataVersion, snapshot, total, mask, scale, offset, isLog, bins, effMin, effMax);
 
+            int geometryHash = gate.Geometry.GetGeometryHash();
+            HistogramGateProcessingState state;
+            lock (_stateLock)
+            {
+                if (!_histogramStates.TryGetValue(gate.GateId, out state!))
+                {
+                    state = new HistogramGateProcessingState(gate.GateId, geometryHash, settings, snapshot.Capacity);
+                    _histogramStates[gate.GateId] = state;
+                }
+                else if (!state.Matches(geometryHash, settings, snapshot.Capacity))
+                {
+                    state.Reset(geometryHash, settings, snapshot.Capacity);
+                }
+            }
+
+            if (NeedsRebuild(state.LastProcessedSequence, snapshot))
+            {
+                state.ClearData(snapshot.StartSequence);
+                ApplyHistogramRange(state, snapshot, snapshot.StartSequence, snapshot.EndSequence, mask, scale, offset, isLog, bins, effMin, effMax);
+                state.LastProcessedSequence = snapshot.EndSequence;
+            }
+            else
+            {
+                long fromSequence = state.LastProcessedSequence;
+                if (fromSequence < snapshot.EndSequence)
+                {
+                    ApplyHistogramRange(state, snapshot, fromSequence, snapshot.EndSequence, mask, scale, offset, isLog, bins, effMin, effMax);
+                    state.LastProcessedSequence = snapshot.EndSequence;
+                }
+
+                TrimHistogramToWindow(state, snapshot.Count);
+            }
+
+            return new GateResult
+            {
+                GateId = gate.GateId,
+                PlotId = settings.Id,
+                DataVersion = dataVersion,
+                PassedCount = state.PassedCount,
+                TotalCount = total,
+                Stats = Build1DStats(state.PassedCount, total, state.Sum, state.SumSq),
+            };
+        }
+
+        private GateResult ProcessPseudocolor(GateSettings gate, PlotSettings settings, long dataVersion, GateProcessorOptions options)
+        {
+            int bins = settings.GetBinCount();
+            var binGeo = gate.Geometry.ToBinGeometry(bins);
+            var mask2d = BuildMask2D(bins, binGeo);
+
+            MultiChannelWindowSnapshot snapshot = _buffer.GetSnapshot(settings.XFeature, settings.YFeature);
+            int total = snapshot.Count;
+            if (total <= 0)
+                return EmptyResultWithTotal(gate, settings, dataVersion, total);
+
+            var (xScale, xOffset, xIsLog, xEffMin, xEffMax) = BuildBinTransform(settings, settings.XAxisScaleType);
+            var (yScale, yOffset, yIsLog, yEffMin, yEffMax) = BuildBinTransform(settings, settings.YAxisScaleType);
+            if (options.IncludeEventIndices)
+                return ProcessPseudocolorFullScan(gate, settings, dataVersion, snapshot, total, mask2d, xScale, xOffset, xIsLog, yScale, yOffset, yIsLog, bins, xEffMin, xEffMax, yEffMin, yEffMax);
+
+            int geometryHash = gate.Geometry.GetGeometryHash();
+            PseudocolorGateProcessingState state;
+            lock (_stateLock)
+            {
+                if (!_pseudocolorStates.TryGetValue(gate.GateId, out state!))
+                {
+                    state = new PseudocolorGateProcessingState(gate.GateId, geometryHash, settings, snapshot.Capacity);
+                    _pseudocolorStates[gate.GateId] = state;
+                }
+                else if (!state.Matches(geometryHash, settings, snapshot.Capacity))
+                {
+                    state.Reset(geometryHash, settings, snapshot.Capacity);
+                }
+            }
+
+            if (NeedsRebuild(state.LastProcessedSequence, snapshot))
+            {
+                state.ClearData(snapshot.StartSequence);
+                ApplyPseudocolorRange(state, snapshot, snapshot.StartSequence, snapshot.EndSequence, mask2d, xScale, xOffset, xIsLog, yScale, yOffset, yIsLog, bins, xEffMin, xEffMax, yEffMin, yEffMax);
+                state.LastProcessedSequence = snapshot.EndSequence;
+            }
+            else
+            {
+                long fromSequence = state.LastProcessedSequence;
+                if (fromSequence < snapshot.EndSequence)
+                {
+                    ApplyPseudocolorRange(state, snapshot, fromSequence, snapshot.EndSequence, mask2d, xScale, xOffset, xIsLog, yScale, yOffset, yIsLog, bins, xEffMin, xEffMax, yEffMin, yEffMax);
+                    state.LastProcessedSequence = snapshot.EndSequence;
+                }
+
+                TrimPseudocolorToWindow(state, snapshot.Count);
+            }
+
+            return new GateResult
+            {
+                GateId = gate.GateId,
+                PlotId = settings.Id,
+                DataVersion = dataVersion,
+                PassedCount = state.PassedCount,
+                TotalCount = total,
+                Stats = Build2DStats(state.PassedCount, total, state.SumX, state.SumSqX, state.SumY, state.SumSqY),
+            };
+        }
+
+        private static GateResult ProcessHistogramFullScan(
+            GateSettings gate,
+            PlotSettings settings,
+            long dataVersion,
+            ChannelWindowSnapshot snapshot,
+            int total,
+            bool[] mask,
+            double scale,
+            double offset,
+            bool isLog,
+            int bins,
+            double effMin,
+            double effMax)
+        {
             int passed = 0;
             double sum = 0;
             double sumsq = 0;
-            List<int>? indices = options.IncludeEventIndices ? new List<int>() : null;
+            var indices = new List<int>();
 
             RunSequential(snapshot, (physicalIndex, logicalIndex) =>
             {
@@ -68,10 +226,8 @@ namespace Worksheet.Services.Viewport.Gates
                 passed++;
                 sum += value;
                 sumsq += value * value;
-                indices?.Add(logicalIndex);
+                indices.Add(logicalIndex);
             });
-
-            var stats = Build1DStats(passed, total, sum, sumsq);
 
             return new GateResult
             {
@@ -80,37 +236,41 @@ namespace Worksheet.Services.Viewport.Gates
                 DataVersion = dataVersion,
                 PassedCount = passed,
                 TotalCount = total,
-                Stats = stats,
-                EventIndices = indices?.ToArray(),
+                Stats = Build1DStats(passed, total, sum, sumsq),
+                EventIndices = indices.ToArray(),
             };
         }
 
-        private GateResult ProcessPseudocolor(GateSettings gate, PlotSettings settings, long dataVersion, GateProcessorOptions options)
+        private static GateResult ProcessPseudocolorFullScan(
+            GateSettings gate,
+            PlotSettings settings,
+            long dataVersion,
+            MultiChannelWindowSnapshot snapshot,
+            int total,
+            bool[,] mask2d,
+            double xScale,
+            double xOffset,
+            bool xIsLog,
+            double yScale,
+            double yOffset,
+            bool yIsLog,
+            int bins,
+            double xEffMin,
+            double xEffMax,
+            double yEffMin,
+            double yEffMax)
         {
-            int bins = settings.GetBinCount();
-            var binGeo = gate.Geometry.ToBinGeometry(bins);
-            var mask2d = BuildMask2D(bins, binGeo);
-
-            ChannelWindowSnapshot xSnapshot = _buffer.GetSnapshot(settings.XFeature);
-            ChannelWindowSnapshot ySnapshot = _buffer.GetSnapshot(settings.YFeature);
-            int total = Math.Min(xSnapshot.Count, ySnapshot.Count);
-            if (total <= 0)
-                return EmptyResultWithTotal(gate, settings, dataVersion, total);
-
-            var (xScale, xOffset, xIsLog, xEffMin, xEffMax) = BuildBinTransform(settings, settings.XAxisScaleType);
-            var (yScale, yOffset, yIsLog, yEffMin, yEffMax) = BuildBinTransform(settings, settings.YAxisScaleType);
-
             int passed = 0;
             double sumX = 0;
             double sumsqX = 0;
             double sumY = 0;
             double sumsqY = 0;
-            List<int>? indices = options.IncludeEventIndices ? new List<int>() : null;
+            var indices = new List<int>();
 
-            RunSequential(xSnapshot, ySnapshot, total, (xPhysicalIndex, yPhysicalIndex, logicalIndex) =>
+            RunSequential(snapshot, total, (xPhysicalIndex, yPhysicalIndex, logicalIndex) =>
             {
-                double xv = xSnapshot.Values[xPhysicalIndex];
-                double yv = ySnapshot.Values[yPhysicalIndex];
+                double xv = snapshot.ChannelValues[0][xPhysicalIndex];
+                double yv = snapshot.ChannelValues[1][yPhysicalIndex];
                 if (!double.IsFinite(xv) || !double.IsFinite(yv))
                     return;
 
@@ -124,10 +284,8 @@ namespace Worksheet.Services.Viewport.Gates
                 sumsqX += xv * xv;
                 sumY += yv;
                 sumsqY += yv * yv;
-                indices?.Add(logicalIndex);
+                indices.Add(logicalIndex);
             });
-
-            var stats = Build2DStats(passed, total, sumX, sumsqX, sumY, sumsqY);
 
             return new GateResult
             {
@@ -136,8 +294,8 @@ namespace Worksheet.Services.Viewport.Gates
                 DataVersion = dataVersion,
                 PassedCount = passed,
                 TotalCount = total,
-                Stats = stats,
-                EventIndices = indices?.ToArray(),
+                Stats = Build2DStats(passed, total, sumX, sumsqX, sumY, sumsqY),
+                EventIndices = indices.ToArray(),
             };
         }
 
@@ -235,6 +393,145 @@ namespace Worksheet.Services.Viewport.Gates
                     Y = settings.PlotType == PlotType.Pseudocolor ? new GateAxisStatistics(0, 0, 0, 0) : null,
                 }
             };
+
+        private static void ApplyHistogramRange(
+            HistogramGateProcessingState state,
+            ChannelWindowSnapshot snapshot,
+            long fromSequence,
+            long toSequence,
+            bool[] mask,
+            double scale,
+            double offset,
+            bool isLog,
+            int bins,
+            double effMin,
+            double effMax)
+        {
+            for (long sequence = fromSequence; sequence < toSequence; sequence++)
+            {
+                if (state.RingCount == state.RingPassed.Length)
+                    EvictOldestHistogramContribution(state);
+
+                int physicalIndex = snapshot.PhysicalIndexForSequence(sequence);
+                double value = snapshot.Values[physicalIndex];
+                bool passed = false;
+
+                if (double.IsFinite(value))
+                {
+                    int xBin = ToBin(value, scale, offset, isLog, bins, effMin, effMax);
+                    passed = mask[xBin];
+                }
+
+                int writeIndex = (state.RingStart + state.RingCount) % state.RingPassed.Length;
+                state.RingPassed[writeIndex] = passed;
+                state.RingValues[writeIndex] = value;
+                state.RingCount++;
+
+                if (!passed)
+                    continue;
+
+                state.PassedCount++;
+                state.Sum += value;
+                state.SumSq += value * value;
+            }
+        }
+
+        private static void EvictOldestHistogramContribution(HistogramGateProcessingState state)
+        {
+            int evictIndex = state.RingStart;
+            if (state.RingPassed[evictIndex])
+            {
+                double value = state.RingValues[evictIndex];
+                state.PassedCount--;
+                state.Sum -= value;
+                state.SumSq -= value * value;
+            }
+
+            state.RingStart = (state.RingStart + 1) % state.RingPassed.Length;
+            state.RingCount--;
+        }
+
+        private static void TrimHistogramToWindow(HistogramGateProcessingState state, int windowCount)
+        {
+            while (state.RingCount > windowCount)
+                EvictOldestHistogramContribution(state);
+        }
+
+        private static void ApplyPseudocolorRange(
+            PseudocolorGateProcessingState state,
+            MultiChannelWindowSnapshot snapshot,
+            long fromSequence,
+            long toSequence,
+            bool[,] mask2d,
+            double xScale,
+            double xOffset,
+            bool xIsLog,
+            double yScale,
+            double yOffset,
+            bool yIsLog,
+            int bins,
+            double xEffMin,
+            double xEffMax,
+            double yEffMin,
+            double yEffMax)
+        {
+            for (long sequence = fromSequence; sequence < toSequence; sequence++)
+            {
+                if (state.RingCount == state.RingPassed.Length)
+                    EvictOldestPseudocolorContribution(state);
+
+                int physicalIndex = snapshot.PhysicalIndexForSequence(sequence);
+                double xv = snapshot.ChannelValues[0][physicalIndex];
+                double yv = snapshot.ChannelValues[1][physicalIndex];
+                bool passed = false;
+
+                if (double.IsFinite(xv) && double.IsFinite(yv))
+                {
+                    int xBin = ToBin(xv, xScale, xOffset, xIsLog, bins, xEffMin, xEffMax);
+                    int yBin = ToBin(yv, yScale, yOffset, yIsLog, bins, yEffMin, yEffMax);
+                    passed = mask2d[yBin, xBin];
+                }
+
+                int writeIndex = (state.RingStart + state.RingCount) % state.RingPassed.Length;
+                state.RingPassed[writeIndex] = passed;
+                state.RingXValues[writeIndex] = xv;
+                state.RingYValues[writeIndex] = yv;
+                state.RingCount++;
+
+                if (!passed)
+                    continue;
+
+                state.PassedCount++;
+                state.SumX += xv;
+                state.SumSqX += xv * xv;
+                state.SumY += yv;
+                state.SumSqY += yv * yv;
+            }
+        }
+
+        private static void EvictOldestPseudocolorContribution(PseudocolorGateProcessingState state)
+        {
+            int evictIndex = state.RingStart;
+            if (state.RingPassed[evictIndex])
+            {
+                double xv = state.RingXValues[evictIndex];
+                double yv = state.RingYValues[evictIndex];
+                state.PassedCount--;
+                state.SumX -= xv;
+                state.SumSqX -= xv * xv;
+                state.SumY -= yv;
+                state.SumSqY -= yv * yv;
+            }
+
+            state.RingStart = (state.RingStart + 1) % state.RingPassed.Length;
+            state.RingCount--;
+        }
+
+        private static void TrimPseudocolorToWindow(PseudocolorGateProcessingState state, int windowCount)
+        {
+            while (state.RingCount > windowCount)
+                EvictOldestPseudocolorContribution(state);
+        }
 
         private static bool[] BuildRectangleMask1D(int bins, double xMin, double xMax)
         {
@@ -395,6 +692,28 @@ namespace Worksheet.Services.Viewport.Gates
             return Math.Clamp((int)pos, 0, bins - 1);
         }
 
+        private static bool NeedsRebuild(long lastProcessedSequence, ChannelWindowSnapshot snapshot)
+        {
+            if (lastProcessedSequence == 0)
+                return true;
+            if (lastProcessedSequence < snapshot.StartSequence)
+                return true;
+            if (lastProcessedSequence > snapshot.EndSequence)
+                return true;
+            return false;
+        }
+
+        private static bool NeedsRebuild(long lastProcessedSequence, MultiChannelWindowSnapshot snapshot)
+        {
+            if (lastProcessedSequence == 0)
+                return true;
+            if (lastProcessedSequence < snapshot.StartSequence)
+                return true;
+            if (lastProcessedSequence > snapshot.EndSequence)
+                return true;
+            return false;
+        }
+
         private static void RunSequential(ChannelWindowSnapshot snapshot, Action<int, int> action)
         {
             if (snapshot.Count <= 0)
@@ -413,21 +732,19 @@ namespace Worksheet.Services.Viewport.Gates
                 action(snapshot.PhysicalIndexAt(logicalIndex), logicalIndex);
         }
 
-        private static void RunSequential(ChannelWindowSnapshot xSnapshot, ChannelWindowSnapshot ySnapshot, int count, Action<int, int, int> action)
+        private static void RunSequential(MultiChannelWindowSnapshot snapshot, int count, Action<int, int, int> action)
         {
             if (count <= 0)
                 return;
 
-            bool xContiguous = xSnapshot.IsContiguous;
-            bool yContiguous = ySnapshot.IsContiguous;
-            if (xContiguous && yContiguous)
+            if (snapshot.IsContiguous)
             {
-                int xEnd = xSnapshot.StartIndex + count;
-                int xPhysicalIndex = xSnapshot.StartIndex;
-                int yPhysicalIndex = ySnapshot.StartIndex;
+                int end = snapshot.StartIndex + count;
+                int xPhysicalIndex = snapshot.StartIndex;
+                int yPhysicalIndex = snapshot.StartIndex;
                 int logicalIndex = 0;
 
-                while (xPhysicalIndex < xEnd)
+                while (xPhysicalIndex < end)
                 {
                     action(xPhysicalIndex, yPhysicalIndex, logicalIndex);
                     xPhysicalIndex++;
@@ -439,7 +756,152 @@ namespace Worksheet.Services.Viewport.Gates
             }
 
             for (int logicalIndex = 0; logicalIndex < count; logicalIndex++)
-                action(xSnapshot.PhysicalIndexAt(logicalIndex), ySnapshot.PhysicalIndexAt(logicalIndex), logicalIndex);
+            {
+                int physicalIndex = snapshot.PhysicalIndexAt(logicalIndex);
+                action(physicalIndex, physicalIndex, logicalIndex);
+            }
+        }
+
+        private sealed class HistogramGateProcessingState
+        {
+            public HistogramGateProcessingState(Guid gateId, int geometryHash, PlotSettings settings, int capacity)
+            {
+                GateId = gateId;
+                Reset(geometryHash, settings, capacity);
+            }
+
+            public Guid GateId { get; }
+            public int GeometryHash { get; private set; }
+            public int BinCount { get; private set; }
+            public int FeatureIndex { get; private set; }
+            public AxisScaleType AxisScaleType { get; private set; }
+            public double MinValue { get; private set; }
+            public double MaxValue { get; private set; }
+            public bool[] RingPassed { get; private set; } = Array.Empty<bool>();
+            public double[] RingValues { get; private set; } = Array.Empty<double>();
+            public int RingStart { get; set; }
+            public int RingCount { get; set; }
+            public long LastProcessedSequence { get; set; }
+            public int PassedCount { get; set; }
+            public double Sum { get; set; }
+            public double SumSq { get; set; }
+
+            public bool Matches(int geometryHash, PlotSettings settings, int capacity)
+            {
+                return GeometryHash == geometryHash
+                    && BinCount == settings.GetBinCount()
+                    && FeatureIndex == settings.XFeature
+                    && AxisScaleType == settings.XAxisScaleType
+                    && MinValue.Equals(settings.MinValue)
+                    && MaxValue.Equals(settings.MaxValue)
+                    && RingPassed.Length == capacity;
+            }
+
+            public void Reset(int geometryHash, PlotSettings settings, int capacity)
+            {
+                GeometryHash = geometryHash;
+                BinCount = settings.GetBinCount();
+                FeatureIndex = settings.XFeature;
+                AxisScaleType = settings.XAxisScaleType;
+                MinValue = settings.MinValue;
+                MaxValue = settings.MaxValue;
+                RingPassed = new bool[capacity];
+                RingValues = new double[capacity];
+                RingStart = 0;
+                RingCount = 0;
+                LastProcessedSequence = 0;
+                PassedCount = 0;
+                Sum = 0;
+                SumSq = 0;
+            }
+
+            public void ClearData(long sequence)
+            {
+                RingStart = 0;
+                RingCount = 0;
+                LastProcessedSequence = sequence;
+                PassedCount = 0;
+                Sum = 0;
+                SumSq = 0;
+            }
+        }
+
+        private sealed class PseudocolorGateProcessingState
+        {
+            public PseudocolorGateProcessingState(Guid gateId, int geometryHash, PlotSettings settings, int capacity)
+            {
+                GateId = gateId;
+                Reset(geometryHash, settings, capacity);
+            }
+
+            public Guid GateId { get; }
+            public int GeometryHash { get; private set; }
+            public int BinCount { get; private set; }
+            public int XFeature { get; private set; }
+            public int YFeature { get; private set; }
+            public AxisScaleType XAxisScaleType { get; private set; }
+            public AxisScaleType YAxisScaleType { get; private set; }
+            public double MinValue { get; private set; }
+            public double MaxValue { get; private set; }
+            public bool[] RingPassed { get; private set; } = Array.Empty<bool>();
+            public double[] RingXValues { get; private set; } = Array.Empty<double>();
+            public double[] RingYValues { get; private set; } = Array.Empty<double>();
+            public int RingStart { get; set; }
+            public int RingCount { get; set; }
+            public long LastProcessedSequence { get; set; }
+            public int PassedCount { get; set; }
+            public double SumX { get; set; }
+            public double SumSqX { get; set; }
+            public double SumY { get; set; }
+            public double SumSqY { get; set; }
+
+            public bool Matches(int geometryHash, PlotSettings settings, int capacity)
+            {
+                return GeometryHash == geometryHash
+                    && BinCount == settings.GetBinCount()
+                    && XFeature == settings.XFeature
+                    && YFeature == settings.YFeature
+                    && XAxisScaleType == settings.XAxisScaleType
+                    && YAxisScaleType == settings.YAxisScaleType
+                    && MinValue.Equals(settings.MinValue)
+                    && MaxValue.Equals(settings.MaxValue)
+                    && RingPassed.Length == capacity;
+            }
+
+            public void Reset(int geometryHash, PlotSettings settings, int capacity)
+            {
+                GeometryHash = geometryHash;
+                BinCount = settings.GetBinCount();
+                XFeature = settings.XFeature;
+                YFeature = settings.YFeature;
+                XAxisScaleType = settings.XAxisScaleType;
+                YAxisScaleType = settings.YAxisScaleType;
+                MinValue = settings.MinValue;
+                MaxValue = settings.MaxValue;
+                RingPassed = new bool[capacity];
+                RingXValues = new double[capacity];
+                RingYValues = new double[capacity];
+                RingStart = 0;
+                RingCount = 0;
+                LastProcessedSequence = 0;
+                PassedCount = 0;
+                SumX = 0;
+                SumSqX = 0;
+                SumY = 0;
+                SumSqY = 0;
+            }
+
+            public void ClearData(long sequence)
+            {
+                RingStart = 0;
+                RingCount = 0;
+                LastProcessedSequence = sequence;
+                PassedCount = 0;
+                SumX = 0;
+                SumSqX = 0;
+                SumY = 0;
+                SumSqY = 0;
+            }
         }
     }
 }
