@@ -23,7 +23,9 @@ namespace Worksheet.Views
             ToolbarControl.OscilloscopePlotButtonClicked += Toolbar_OscilloscopePlotButtonClicked;
             SidebarControl.StartStreamingClicked += Sidebar_StartStreamingClicked;
             SidebarControl.StopStreamingClicked += Sidebar_StopStreamingClicked;
+            SidebarControl.RollingWindowChanged += Sidebar_RollingWindowChanged;
             SidebarControl.SetStreamingState(WorksheetGridControl.IsStreamingEnabled);
+            SidebarControl.SetRollingWindowValue(WorksheetGridControl.WindowCapacity);
 
             _gateStatsTimer.Interval = TimeSpan.FromMilliseconds(250);
             _gateStatsTimer.Tick += (_, __) =>
@@ -83,6 +85,12 @@ namespace Worksheet.Views
         {
             WorksheetGridControl.SetStreamingEnabled(false);
             SidebarControl.SetStreamingState(WorksheetGridControl.IsStreamingEnabled);
+        }
+
+        private void Sidebar_RollingWindowChanged(int windowCapacity)
+        {
+            WorksheetGridControl.SetWindowCapacity(windowCapacity);
+            SidebarControl.SetRollingWindowValue(WorksheetGridControl.WindowCapacity);
         }
     }
 }
