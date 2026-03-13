@@ -26,6 +26,8 @@ namespace Worksheet.Views
         public event EventHandler? PseudocolorPlotButtonClicked;
         public event EventHandler? SpectralRibbonPlotButtonClicked;
         public event EventHandler? OscilloscopePlotButtonClicked;
+        public event Action<double>? SnapGridChanged;
+        private double _currentSnapSize = 20;
 
         public Toolbar()
         {
@@ -60,6 +62,48 @@ namespace Worksheet.Views
         private void OscilloscopePlotButton_Click(object sender, RoutedEventArgs e)
         {
             OscilloscopePlotButtonClicked?.Invoke(this, EventArgs.Empty);
+        }
+
+        private void SnapToGridCheckBox_Changed(object sender, RoutedEventArgs e)
+        {
+            CommitSnapGridSettings();
+        }
+
+        private void SnapGridSizeTextBox_LostFocus(object sender, RoutedEventArgs e)
+        {
+            CommitSnapGridSettings();
+        }
+
+        private void SnapGridSizeTextBox_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key != Key.Enter)
+                return;
+
+            CommitSnapGridSettings();
+            e.Handled = true;
+        }
+
+        public void SetSnapGridSize(double snapSize)
+        {
+            _currentSnapSize = snapSize > 0 ? snapSize : _currentSnapSize;
+            SnapToGridCheckBox.IsChecked = snapSize > 0;
+            SnapGridSizeTextBox.Text = Math.Round(_currentSnapSize).ToString();
+        }
+
+        private void CommitSnapGridSettings()
+        {
+            if (!double.TryParse(SnapGridSizeTextBox.Text, out double snapSize) || snapSize <= 0)
+            {
+                snapSize = _currentSnapSize;
+                SnapGridSizeTextBox.Text = Math.Round(snapSize).ToString();
+            }
+            else
+            {
+                _currentSnapSize = snapSize;
+                SnapGridSizeTextBox.Text = Math.Round(snapSize).ToString();
+            }
+
+            SnapGridChanged?.Invoke(SnapToGridCheckBox.IsChecked == true ? snapSize : 0);
         }
     }
 }

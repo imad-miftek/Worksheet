@@ -18,7 +18,7 @@ namespace Worksheet.Views.PlotViews
         private byte[] _pixelBuffer = Array.Empty<byte>();
         private int _pixelWidth;
         private int _pixelHeight;
-        private double _yAxisUpperBound = 10;
+        private double _yAxisUpperBound = 1000;
 
         public Action<GateSettings>? GateSettingsSink { get; set; }
         public Action<Guid>? GateRemovedSink { get; set; }
@@ -46,7 +46,7 @@ namespace Worksheet.Views.PlotViews
             plot.Plot.YLabel("Frequency");
             plot.Plot.XLabel(GetXAxisLabel(Settings.XFeature));
             _axisFactory.Apply(Settings.XAxisScaleType, plot, Settings);
-            _yAxisUpperBound = 10;
+            _yAxisUpperBound = 1000;
             _yAxisItem.Apply(plot, _yAxisUpperBound);
             _lastAppliedConfig = HistogramConfigSnapshot.From(Settings);
         }
@@ -75,7 +75,7 @@ namespace Worksheet.Views.PlotViews
         public override void Clear(WpfPlot plot)
         {
             ClearDynamicSurface();
-            _yAxisUpperBound = 10;
+            _yAxisUpperBound = 1000;
             ExecuteStaticRefresh(plot, () =>
             {
                 plot.Plot.Axes.SetLimitsY(0, 1);

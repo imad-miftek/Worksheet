@@ -8,7 +8,7 @@ namespace Worksheet.Services
 
         private readonly double[][] _channels;
         private readonly object _lock = new();
-        private readonly int _windowCapacity;
+        private int _windowCapacity;
         private int _writeIndex;
         private int _count;
         private long _totalEventsIngested;
@@ -89,6 +89,38 @@ namespace Worksheet.Services
             }
         }
 
+        public void ResizeWindow(int windowCapacity)
+        {
+            if (windowCapacity <= 0)
+                throw new ArgumentOutOfRangeException(nameof(windowCapacity));
+
+            lock (_lock)
+            {
+                if (windowCapacity == _windowCapacity)
+                    return;
+
+                int retainedCount = Math.Min(_count, windowCapacity);
+                long retainedStartSequence = _totalEventsIngested - retainedCount;
+
+                for (int c = 0; c < ChannelCount; c++)
+                {
+                    var resized = new double[windowCapacity];
+                    for (int i = 0; i < retainedCount; i++)
+                    {
+                        int sourceIndex = PhysicalIndexForSequence(retainedStartSequence + i);
+                        resized[i] = _channels[c][sourceIndex];
+                    }
+
+                    _channels[c] = resized;
+                }
+
+                _windowCapacity = windowCapacity;
+                _count = retainedCount;
+                _writeIndex = retainedCount % _windowCapacity;
+                _dataVersion++;
+            }
+        }
+
         public void ClearMemory()
         {
             lock (_lock)
@@ -155,6 +187,13 @@ namespace Worksheet.Services
             return (startIndex, startSequence);
         }
 
+        private int PhysicalIndexForSequence(long sequence)
+        {
+            long startSequence = _totalEventsIngested - _count;
+            int logicalIndex = (int)(sequence - startSequence);
+            return (_writeIndex - _count + logicalIndex + _windowCapacity) % _windowCapacity;
+        }
+
         public bool IsStreamingEnabled
         {
             get
@@ -184,6 +223,17 @@ namespace Worksheet.Services
                 lock (_lock)
                 {
                     return _totalEventsIngested;
+                }
+            }
+        }
+
+        public int WindowCapacity
+        {
+            get
+            {
+                lock (_lock)
+                {
+                    return _windowCapacity;
                 }
             }
         }

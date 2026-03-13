@@ -84,7 +84,9 @@
                                  Height="30"
                                  Padding="8,4"
                                  BorderBrush="#D1D5DB"
-                                 BorderThickness="1" />
+                                 BorderThickness="1"
+                                 LostFocus="RollingWindowTextBox_LostFocus"
+                                 KeyDown="RollingWindowTextBox_KeyDown" />
                     </StackPanel>
                 </Grid>
             </Border>

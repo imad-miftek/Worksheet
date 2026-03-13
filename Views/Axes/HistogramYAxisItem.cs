@@ -8,7 +8,7 @@ namespace Worksheet.Views.PlotViews.Axes
     internal sealed class HistogramYAxisItem
     {
         private const int MinorTicksPerMajorInterval = 4;
-        private static readonly double[] NormalizedTickPositions = [0, 0.25, 0.5, 0.75, 1.0];
+        private static readonly double[] NormalizedTickPositions = [0, 0.2, 0.4, 0.6, 0.8, 1.0];
         private static readonly double[] NormalizedMinorTickPositions = BuildNormalizedMinorTickPositions();
 
         public void Apply(WpfPlot plot, double upperBound)
@@ -27,9 +27,9 @@ namespace Worksheet.Views.PlotViews.Axes
         public double GetSnappedUpperBound(double maxCount)
         {
             if (maxCount <= 0)
-                return 10;
+                return 1000;
 
-            double padded = Math.Max(10, maxCount * 1.05);
+            double padded = Math.Max(1000, maxCount * 1.05);
             double exponent = Math.Floor(Math.Log10(padded));
             double magnitude = Math.Pow(10, exponent);
             double normalized = padded / magnitude;

@@ -23,6 +23,7 @@ namespace Worksheet.Views
         private readonly List<PlotItem> _plotItems = new();
 
         private double _snapSize = 0;
+        private int _nextZIndex = 1;
 
         /// <summary>
         /// Grid snap size in pixels. Set to 0 to disable snapping and hide grid lines.
@@ -38,6 +39,7 @@ namespace Worksheet.Views
         }
 
         public bool IsStreamingEnabled => _viewportSession.IsStreamingEnabled;
+        public int WindowCapacity => _viewportSession.WindowCapacity;
 
         public WorksheetGrid() : this(
             new SelectionManager<IWorksheetItem>(),
@@ -69,6 +71,11 @@ namespace Worksheet.Views
             UpdateGridBackground();
 
             _viewportSession.MemoryCleared += (_, _) => ClearAllPlotVisuals();
+            _selectionManager.SelectionChanged += item =>
+            {
+                if (item != null)
+                    Panel.SetZIndex(item.Container, _nextZIndex++);
+            };
 
             // Click on empty space deselects all items
             WorksheetGridContainer.MouseLeftButtonDown += (s, e) =>
@@ -358,7 +365,7 @@ namespace Worksheet.Views
 
             var thumbs = _thumbManager.CreateThumbs(container.Overlay);
             _thumbManager.AttachPositioning(plot, thumbs);
-            _thumbManager.AttachResize(thumbs, container, plot, SnapSize);
+            _thumbManager.AttachResize(thumbs, container, plot, () => SnapSize);
 
             var plotItem = new PlotItem(plot, container, thumbs)
             {
@@ -377,7 +384,7 @@ namespace Worksheet.Views
             };
 
             _dragHandler.AttachDrag(container.DragLayer, plotItem,
-                                    WorksheetGridContainer, _selectionManager, SnapSize);
+                                    WorksheetGridContainer, _selectionManager, () => SnapSize);
 
             if (plotView is PseudocolorPlotView pcView)
             {
@@ -402,6 +409,7 @@ namespace Worksheet.Views
             }
 
             WorksheetGridContainer.Children.Add(container.Container);
+            Panel.SetZIndex(container.Container, _nextZIndex++);
             _plotItems.Add(plotItem);
             _selectionManager.Select(plotItem);
             }
@@ -424,7 +432,7 @@ namespace Worksheet.Views
             // Create and setup thumbs
             var thumbs = _thumbManager.CreateThumbs(container.Overlay);
             _thumbManager.AttachPositioning(plot, thumbs);
-            _thumbManager.AttachResize(thumbs, container, plot, SnapSize);
+            _thumbManager.AttachResize(thumbs, container, plot, () => SnapSize);
 
             // Create the worksheet item with metadata
             var plotItem = new PlotItem(plot, container, thumbs)
@@ -445,7 +453,7 @@ namespace Worksheet.Views
 
             // Setup drag behavior with snapping
             _dragHandler.AttachDrag(container.DragLayer, plotItem,
-                                    WorksheetGridContainer, _selectionManager, SnapSize);
+                                    WorksheetGridContainer, _selectionManager, () => SnapSize);
 
             // Attach plot-specific context menu
             if (plotView is PseudocolorPlotView pcView)
@@ -475,6 +483,7 @@ namespace Worksheet.Views
 
             // Add to worksheet and select
             WorksheetGridContainer.Children.Add(container.Container);
+            Panel.SetZIndex(container.Container, _nextZIndex++);
             _plotItems.Add(plotItem);
             _selectionManager.Select(plotItem);
             }
@@ -497,6 +506,11 @@ namespace Worksheet.Views
         public void ClearMemory()
         {
             _viewportSession.ClearMemory();
+        }
+
+        public void SetWindowCapacity(int windowCapacity)
+        {
+            _viewportSession.SetWindowCapacity(windowCapacity);
         }
 
         public void ResetProcessingMetrics()

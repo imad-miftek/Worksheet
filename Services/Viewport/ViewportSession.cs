@@ -49,6 +49,7 @@ namespace Worksheet.Services
         public DataStore DataStore => _dataStore;
         public FeatureSelectionStrategy FeatureSelection => _featureSelection;
         public bool IsStreamingEnabled => _chasm.IsStreamingEnabled;
+        public int WindowCapacity => _dataSource.WindowCapacity;
 
         public void Start()
         {
@@ -91,6 +92,11 @@ namespace Worksheet.Services
                 _chasm.StartStreaming();
             else
                 _chasm.StopStreaming();
+        }
+
+        public void SetWindowCapacity(int windowCapacity)
+        {
+            _dataSource.ResizeWindow(windowCapacity);
         }
 
         public void ClearMemory()

@@ -14,6 +14,24 @@
             <Button Content="Pseudocolor Plot" Margin="5" Click="PseudocolorPlotButton_Click" />
             <Button Content="Spectral Ribbon Plot" Margin="5" Click="SpectralRibbonPlotButton_Click" />
             <Button Content="Oscilloscope Plot" Margin="5" Click="OscilloscopePlotButton_Click" />
+            <Separator Margin="8,4" Width="1" />
+            <CheckBox x:Name="SnapToGridCheckBox"
+                      Content="Snap to Grid"
+                      VerticalAlignment="Center"
+                      Margin="5"
+                      Checked="SnapToGridCheckBox_Changed"
+                      Unchecked="SnapToGridCheckBox_Changed" />
+            <TextBox x:Name="SnapGridSizeTextBox"
+                     Text="20"
+                     Width="56"
+                     Height="24"
+                     Margin="5"
+                     VerticalContentAlignment="Center"
+                     LostFocus="SnapGridSizeTextBox_LostFocus"
+                     KeyDown="SnapGridSizeTextBox_KeyDown" />
+            <TextBlock Text="px"
+                       VerticalAlignment="Center"
+                       Margin="0,0,5,0" />
         </StackPanel>
     </Grid>
 </UserControl>
