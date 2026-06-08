@@ -191,6 +191,8 @@ namespace Worksheet.Views.PlotViews
 
         private readonly record struct PlotConfigSnapshot(
             int BinCount,
+            int XFeature,
+            int YFeature,
             AxisScaleType XAxisScaleType,
             AxisScaleType YAxisScaleType,
             double MinValue,
@@ -199,6 +201,8 @@ namespace Worksheet.Views.PlotViews
             public static PlotConfigSnapshot From(PlotSettings settings) =>
                 new(
                     settings.GetBinCount(),
+                    settings.XFeature,
+                    settings.YFeature,
                     settings.XAxisScaleType,
                     settings.YAxisScaleType,
                     settings.MinValue,
