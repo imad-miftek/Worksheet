@@ -1,13 +1,13 @@
 using System;
+using Worksheet.Models;
 
 namespace Worksheet.Services
 {
     public class DataSource
     {
-        private const int ChannelCount = 60;
-
         private readonly double[][] _channels;
         private readonly object _lock = new();
+        private readonly int _signalCount;
         private int _windowCapacity;
         private int _writeIndex;
         private int _count;
@@ -16,13 +16,19 @@ namespace Worksheet.Services
         private long _dataVersion;
 
         public DataSource(int windowCapacity = 200_000)
+            : this(SignalLayout.Default, windowCapacity)
+        {
+        }
+
+        public DataSource(SignalLayout signalLayout, int windowCapacity = 200_000)
         {
             if (windowCapacity <= 0)
                 throw new ArgumentOutOfRangeException(nameof(windowCapacity));
 
+            _signalCount = signalLayout.SignalCount;
             _windowCapacity = windowCapacity;
-            _channels = new double[ChannelCount][];
-            for (int i = 0; i < ChannelCount; i++)
+            _channels = new double[_signalCount][];
+            for (int i = 0; i < _signalCount; i++)
                 _channels[i] = new double[_windowCapacity];
 
             _dataVersion = 1;
@@ -102,7 +108,7 @@ namespace Worksheet.Services
                 int retainedCount = Math.Min(_count, windowCapacity);
                 long retainedStartSequence = _totalEventsIngested - retainedCount;
 
-                for (int c = 0; c < ChannelCount; c++)
+                for (int c = 0; c < _signalCount; c++)
                 {
                     var resized = new double[windowCapacity];
                     for (int i = 0; i < retainedCount; i++)
@@ -138,14 +144,14 @@ namespace Worksheet.Services
         {
             if (channels == null)
                 throw new ArgumentNullException(nameof(channels));
-            if (channels.Length != ChannelCount)
-                throw new ArgumentException($"channels must have length {ChannelCount}.", nameof(channels));
+            if (channels.Length != _signalCount)
+                throw new ArgumentException($"channels must have length {_signalCount}.", nameof(channels));
             if (count < 0)
                 throw new ArgumentOutOfRangeException(nameof(count));
             if (count == 0)
                 return;
 
-            for (int c = 0; c < ChannelCount; c++)
+            for (int c = 0; c < _signalCount; c++)
             {
                 if (channels[c] == null)
                     throw new ArgumentException($"channels[{c}] is null.", nameof(channels));
@@ -160,7 +166,7 @@ namespace Worksheet.Services
 
             lock (_lock)
             {
-                for (int c = 0; c < ChannelCount; c++)
+                for (int c = 0; c < _signalCount; c++)
                     CopyIntoRing(_channels[c], channels[c], sourceOffset, retainedCount);
 
                 _writeIndex = (_writeIndex + retainedCount) % _windowCapacity;
@@ -237,5 +243,7 @@ namespace Worksheet.Services
                 }
             }
         }
+
+        public int SignalCount => _signalCount;
     }
 }

@@ -14,6 +14,7 @@ public sealed class ProcessingProfileTests
     private const int ChannelCount = 60;
     private const int InitialEventCount = 50_000;
     private const int DeltaEventCount = 5_000;
+    private const int LargeLayoutEventCount = 2_000;
 
     private readonly ITestOutputHelper _output;
 
@@ -31,6 +32,27 @@ public sealed class ProcessingProfileTests
         ProfilePlot(CreateHistogramSettings(), "Histogram", expectData: data => Assert.IsType<HistogramProcessedData>(data));
         ProfilePlot(CreatePseudocolorSettings(), "Pseudocolor", expectData: data => Assert.IsType<HeatmapProcessedData>(data));
         ProfilePlot(CreateSpectralRibbonSettings(), "SpectralRibbon", expectData: data => Assert.IsType<SpectralRibbonProcessedData>(data));
+    }
+
+    [Fact]
+    [Trait("Category", "Profile")]
+    public void ProfileLargeSignalLayoutAppendAndSelectedSnapshotRead()
+    {
+        var layout = new SignalLayout(6, 9, 60);
+        int signalIndex = layout.ToIndex(2, 4, 17);
+        var source = new DataSource(layout, windowCapacity: LargeLayoutEventCount);
+        var batch = CreateBatch(LargeLayoutEventCount, offset: 0, signalCount: layout.SignalCount);
+
+        batch[signalIndex][0] = 1_337;
+        batch[signalIndex][LargeLayoutEventCount - 1] = 1_340;
+
+        var append = MeasureAction(() => source.AppendBatch(batch, LargeLayoutEventCount));
+
+        var snapshot = source.GetSnapshot(signalIndex);
+        Assert.Equal(1_337, snapshot.Values[snapshot.PhysicalIndexForSequence(0)]);
+        Assert.Equal(1_340, snapshot.Values[snapshot.PhysicalIndexForSequence(LargeLayoutEventCount - 1)]);
+
+        WriteTiming("LFC 6x9x60 append", "batch", LargeLayoutEventCount, append);
     }
 
     private void ProfilePlot(
@@ -66,6 +88,18 @@ public sealed class ProcessingProfileTests
         var result = action();
         stopwatch.Stop();
         return (result, stopwatch.Elapsed);
+    }
+
+    private static TimeSpan MeasureAction(Action action)
+    {
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+
+        var stopwatch = Stopwatch.StartNew();
+        action();
+        stopwatch.Stop();
+        return stopwatch.Elapsed;
     }
 
     private void WriteTiming(string label, string phase, int eventCount, TimeSpan elapsed)
@@ -112,9 +146,9 @@ public sealed class ProcessingProfileTests
             MaxValue = 100_000_000,
         };
 
-    private static double[][] CreateBatch(int count, int offset)
+    private static double[][] CreateBatch(int count, int offset, int signalCount = ChannelCount)
     {
-        var channels = new double[ChannelCount][];
+        var channels = new double[signalCount][];
         for (int c = 0; c < channels.Length; c++)
         {
             var values = new double[count];

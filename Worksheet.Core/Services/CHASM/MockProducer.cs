@@ -7,25 +7,28 @@ namespace Worksheet.Services
 {
     public sealed class MockProducer : IProducer, IDisposable
     {
-        private const int ChannelCount = 60;
         private const int PopulationCount = 4;
         private const double MaxValue = 100_000_000d;
 
         private readonly ChasmOptions _options;
         private readonly Channel<EventBatch> _channel;
+        private readonly int _signalCount;
 
         private CancellationTokenSource? _cts;
         private Task? _task;
         private volatile bool _running;
 
         private readonly Random _rng;
-        private readonly double[,] _logMeans = new double[ChannelCount, PopulationCount];
-        private readonly double[,] _logSigmas = new double[ChannelCount, PopulationCount];
+        private readonly double[,] _logMeans;
+        private readonly double[,] _logSigmas;
         private readonly double[] _populationWeights = new double[PopulationCount];
 
         public MockProducer(ChasmOptions? options = null)
         {
             _options = options ?? ChasmOptions.Default;
+            _signalCount = _options.SignalLayout.SignalCount;
+            _logMeans = new double[_signalCount, PopulationCount];
+            _logSigmas = new double[_signalCount, PopulationCount];
 
             var bounded = new BoundedChannelOptions(_options.ChannelCapacityBatches)
             {
@@ -90,14 +93,14 @@ namespace Worksheet.Services
 
         private EventBatch GenerateBatch(int count)
         {
-            var channels = new double[ChannelCount][];
-            for (int c = 0; c < ChannelCount; c++)
+            var channels = new double[_signalCount][];
+            for (int c = 0; c < _signalCount; c++)
                 channels[c] = new double[count];
 
             for (int e = 0; e < count; e++)
             {
                 int pop = SamplePopulation();
-                for (int c = 0; c < ChannelCount; c++)
+                for (int c = 0; c < _signalCount; c++)
                 {
                     double logMean = _logMeans[c, pop];
                     double logSigma = _logSigmas[c, pop];
@@ -117,7 +120,7 @@ namespace Worksheet.Services
                 }
             }
 
-            return new EventBatch(count, channels);
+            return new EventBatch(count, channels, _options.SignalLayout);
         }
 
         private void InitializePopulationModel()
@@ -131,12 +134,12 @@ namespace Worksheet.Services
             for (int p = 0; p < PopulationCount; p++)
                 _populationWeights[p] /= sum;
 
-            var distinctPeakCounts = new int[ChannelCount];
-            for (int i = 0; i < ChannelCount; i++)
+            var distinctPeakCounts = new int[_signalCount];
+            for (int i = 0; i < _signalCount; i++)
                 distinctPeakCounts[i] = 1 + (i % 4);
             Shuffle(distinctPeakCounts);
 
-            for (int c = 0; c < ChannelCount; c++)
+            for (int c = 0; c < _signalCount; c++)
             {
                 int peakCount = distinctPeakCounts[c];
                 var (distinctMeans, distinctSigmas) = CreateDistinctPeaks(peakCount);

@@ -1,4 +1,5 @@
 using System;
+using Worksheet.Models;
 
 namespace Worksheet.Services
 {
@@ -6,15 +7,21 @@ namespace Worksheet.Services
     {
         public int Count { get; }
         public double[][] Channels { get; }
+        public int SignalCount { get; }
 
         public EventBatch(int count, double[][] channels)
+            : this(count, channels, SignalLayout.Default)
+        {
+        }
+
+        public EventBatch(int count, double[][] channels, SignalLayout signalLayout)
         {
             if (count < 0)
                 throw new ArgumentOutOfRangeException(nameof(count));
             if (channels == null)
                 throw new ArgumentNullException(nameof(channels));
-            if (channels.Length != 60)
-                throw new ArgumentException("Channels must have length 60.", nameof(channels));
+            if (channels.Length != signalLayout.SignalCount)
+                throw new ArgumentException($"Channels must have length {signalLayout.SignalCount}.", nameof(channels));
 
             for (int c = 0; c < channels.Length; c++)
             {
@@ -26,6 +33,7 @@ namespace Worksheet.Services
 
             Count = count;
             Channels = channels;
+            SignalCount = signalLayout.SignalCount;
         }
     }
 }

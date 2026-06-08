@@ -102,6 +102,12 @@ Important semantics:
 - Oldest events are overwritten when the rolling window is full.
 - Gate event indices are relative to the current logical window, not absolute history.
 
+The raw signal axis is layout-driven in `Worksheet.Core`:
+
+- `SignalLayout.Default` preserves the current `1 laser x 1 feature x 60 channels` shape.
+- Larger event shapes such as `6 lasers x 9 features x 60 channels` map to flat column indices with `SignalLayout.ToIndex(laser, feature, channel)`.
+- `DataSource` still stores signal values column-wise as `signalColumns[signalIndex][eventIndex]`, so selected Laser/Feature/Channel combinations can be read directly.
+
 Default mock acquisition settings come from `Services/CHASM/ChasmOptions.cs`:
 
 - Acquisition interval: `25 ms`
@@ -138,6 +144,18 @@ dotnet test .\Worksheet.Tests\Worksheet.Tests.csproj --no-restore --filter "Cate
 ```
 
 These tests report full-window and delta processing timings for histogram, pseudocolor, and spectral ribbon processing, plus WPF plot-view render-method timings. They do not enforce machine-specific speed thresholds. Render timings measure the app's `PlotView.Render()` paths on an STA thread, not full dispatcher scheduling or monitor frame latency.
+
+For ingestion-only throughput and raw payload bandwidth:
+
+```powershell
+dotnet test .\Worksheet.Tests\Worksheet.Tests.csproj --no-restore --filter "FullyQualifiedName~IngestionProfileTests" --logger "console;verbosity=detailed"
+```
+
+For real CHASM channel/consumer ingestion throughput:
+
+```powershell
+dotnet test .\Worksheet.Tests\Worksheet.Tests.csproj --no-restore --filter "FullyQualifiedName~ChasmPipelineProfileTests" --logger "console;verbosity=detailed"
+```
 
 ## Current State
 

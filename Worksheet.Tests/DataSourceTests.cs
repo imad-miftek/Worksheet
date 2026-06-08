@@ -1,4 +1,5 @@
 using System;
+using Worksheet.Models;
 using Worksheet.Services;
 using Xunit;
 
@@ -64,9 +65,45 @@ public sealed class DataSourceTests
         Assert.Throws<ArgumentException>(() => new EventBatch(1, channels));
     }
 
-    private static double[][] CreateBatch(int count)
+    [Fact]
+    public void DataSourceReadsSelectedLaserFeatureChannelColumn()
     {
-        var channels = new double[60][];
+        var layout = new SignalLayout(6, 9, 60);
+        int signalIndex = layout.ToIndex(2, 4, 17);
+        var source = new DataSource(layout, windowCapacity: 4);
+        var batch = CreateBatch(count: 4, signalCount: layout.SignalCount);
+
+        batch[signalIndex][0] = 1_337;
+        batch[signalIndex][1] = 1_338;
+        batch[signalIndex][2] = 1_339;
+        batch[signalIndex][3] = 1_340;
+
+        source.AppendBatch(batch, count: 4);
+
+        var snapshot = source.GetSnapshot(signalIndex);
+
+        Assert.Equal(layout.SignalCount, source.SignalCount);
+        Assert.Equal(1_337, snapshot.Values[snapshot.PhysicalIndexForSequence(0)]);
+        Assert.Equal(1_338, snapshot.Values[snapshot.PhysicalIndexForSequence(1)]);
+        Assert.Equal(1_339, snapshot.Values[snapshot.PhysicalIndexForSequence(2)]);
+        Assert.Equal(1_340, snapshot.Values[snapshot.PhysicalIndexForSequence(3)]);
+    }
+
+    [Fact]
+    public void EventBatchAcceptsCustomSignalLayout()
+    {
+        var layout = new SignalLayout(6, 9, 60);
+        var channels = CreateBatch(count: 2, signalCount: layout.SignalCount);
+
+        var batch = new EventBatch(2, channels, layout);
+
+        Assert.Equal(2, batch.Count);
+        Assert.Equal(3_240, batch.SignalCount);
+    }
+
+    private static double[][] CreateBatch(int count, int signalCount = SignalLayout.DefaultChannelCount)
+    {
+        var channels = new double[signalCount][];
         for (int i = 0; i < channels.Length; i++)
             channels[i] = new double[count];
 

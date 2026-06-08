@@ -31,7 +31,7 @@ namespace Worksheet.Services
             _dispatcher = dispatcher;
             _dataStore = new DataStore();
             _chasmOptions = ChasmOptions.Default;
-            _dataSource = new DataSource(_chasmOptions.WindowCapacityEvents);
+            _dataSource = new DataSource(_chasmOptions.SignalLayout, _chasmOptions.WindowCapacityEvents);
             _chasmDataSource = new ChasmDataSource(_dataSource);
             var producer = new MockProducer(_chasmOptions);
             var consumer = new ChasmConsumer(producer.Reader, _chasmDataSource);
