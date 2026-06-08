@@ -9,6 +9,8 @@ namespace Worksheet.Services
     {
         private const int PopulationCount = 4;
         private const double MaxValue = 100_000_000d;
+        private const int MaxThroughputBurstBatches = 16;
+        private static readonly TimeSpan MaxThroughputRestInterval = TimeSpan.FromMilliseconds(1);
 
         private readonly ChasmOptions _options;
         private readonly Channel<IEventBatch> _channel;
@@ -103,7 +105,7 @@ namespace Worksheet.Services
         {
             try
             {
-                int batchesSinceYield = 0;
+                int batchesSinceRest = 0;
                 while (!token.IsCancellationRequested)
                 {
                     if (!_running)
@@ -115,11 +117,11 @@ namespace Worksheet.Services
                     var batch = GenerateColumnMajorBatch(_options.BatchSize);
                     _channel.Writer.TryWrite(batch);
 
-                    batchesSinceYield++;
-                    if (batchesSinceYield >= 16)
+                    batchesSinceRest++;
+                    if (batchesSinceRest >= MaxThroughputBurstBatches)
                     {
-                        batchesSinceYield = 0;
-                        await Task.Yield();
+                        batchesSinceRest = 0;
+                        await Task.Delay(MaxThroughputRestInterval, token).ConfigureAwait(false);
                     }
                 }
             }

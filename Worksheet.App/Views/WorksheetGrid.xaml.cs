@@ -14,6 +14,7 @@ namespace Worksheet.Views
     public partial class WorksheetGrid : UserControl
     {
         private const double LayoutMargin = 10;
+        private const ChasmPreset CurrentChasmPreset = ChasmPreset.Balanced50k;
         private readonly SelectionManager<IWorksheetItem> _selectionManager;
         private readonly PlotFactory _plotFactory;
         private readonly PlotContainerFactory _containerFactory;
@@ -64,7 +65,11 @@ namespace Worksheet.Views
             _containerFactory = containerFactory;
             _thumbManager = thumbManager;
             _dragHandler = dragHandler;
-            _viewportSession = viewportSession ?? new ViewportSession(Dispatcher, System.TimeSpan.FromMilliseconds(250), System.TimeSpan.FromMilliseconds(100));
+            _viewportSession = viewportSession ?? new ViewportSession(
+                Dispatcher,
+                System.TimeSpan.FromMilliseconds(250),
+                System.TimeSpan.FromMilliseconds(100),
+                ChasmOptions.FromPreset(CurrentChasmPreset));
             _viewportSession.Start();
 
             InitializeComponent();
