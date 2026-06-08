@@ -17,7 +17,7 @@ namespace Worksheet.Views.Support.Gates
     public sealed class GateVisualManager
     {
         private const double MinGateSizeBins = 1;
-        private const double HandleSizeDip = 6;
+        private const double HandleSizeDip = 8;
         private const double PolygonCloseThresholdDip = 16;
         private const double PolygonCloseCueSizeDip = 8;
         private const double MinLineGateWidthBins = 1;

@@ -159,6 +159,7 @@ namespace Worksheet.Services
 
             return new ProcessingStatusSnapshot(
                 EventRatePerSecond: eventRate,
+                BufferedEventCount: _dataSource.BufferedEventCount,
                 HistogramAverageComputeMs: compute.HistogramAverageMs,
                 PseudocolorAverageComputeMs: compute.PseudocolorAverageMs,
                 SpectralRibbonAverageComputeMs: compute.SpectralRibbonAverageMs,

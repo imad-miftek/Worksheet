@@ -173,8 +173,8 @@ namespace Worksheet.Views.Support
 
             return new Thumb
             {
-                Width = 6,
-                Height = 6,
+                Width = 8,
+                Height = 8,
                 Cursor = cursor,
                 Template = template
             };

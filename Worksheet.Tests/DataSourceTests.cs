@@ -21,6 +21,7 @@ public sealed class DataSourceTests
 
         var snapshot = source.GetSnapshot(7);
 
+        Assert.Equal(3, source.BufferedEventCount);
         Assert.Equal(3, snapshot.Count);
         Assert.Equal(0, snapshot.StartSequence);
         Assert.Equal(3, snapshot.EndSequence);
@@ -47,6 +48,7 @@ public sealed class DataSourceTests
 
         var snapshot = source.GetSnapshot(2);
 
+        Assert.Equal(3, source.BufferedEventCount);
         Assert.Equal(3, snapshot.Count);
         Assert.Equal(2, snapshot.StartSequence);
         Assert.Equal(5, snapshot.EndSequence);
@@ -129,6 +131,7 @@ public sealed class DataSourceTests
 
         var snapshot = source.GetSnapshot(2);
 
+        Assert.Equal(3, source.BufferedEventCount);
         Assert.Equal(3, snapshot.Count);
         Assert.Equal(2, snapshot.StartSequence);
         Assert.Equal(5, snapshot.EndSequence);

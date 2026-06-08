@@ -274,6 +274,17 @@ namespace Worksheet.Services
             }
         }
 
+        public int BufferedEventCount
+        {
+            get
+            {
+                lock (_lock)
+                {
+                    return _count;
+                }
+            }
+        }
+
         public int WindowCapacity
         {
             get

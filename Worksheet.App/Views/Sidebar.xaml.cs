@@ -90,6 +90,7 @@ namespace Worksheet.Views
         public void SetProcessingStatus(ProcessingStatusSnapshot status)
         {
             EventRateValueText.Text = $"{status.EventRatePerSecond:F0} ev/s";
+            BufferedEventsValueText.Text = status.BufferedEventCount.ToString("N0");
             HistogramComputeValueText.Text = FormatMilliseconds(status.HistogramAverageComputeMs);
             PseudocolorComputeValueText.Text = FormatMilliseconds(status.PseudocolorAverageComputeMs);
             SpectralComputeValueText.Text = FormatMilliseconds(status.SpectralRibbonAverageComputeMs);
