@@ -149,9 +149,8 @@ namespace Worksheet.Views.PlotViews
             if (!TryGetBitmapSurface(out var surface))
                 return;
 
-            var dataRect = surface.DataRect;
-            int width = Math.Max(1, (int)Math.Ceiling(dataRect.Width));
-            int height = Math.Max(1, (int)Math.Ceiling(dataRect.Height));
+            int width = surface.TargetWidth;
+            int height = surface.TargetHeight;
 
             if (width <= 0 || height <= 0)
             {

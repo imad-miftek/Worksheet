@@ -7,13 +7,15 @@ namespace Worksheet.Models.Data
 
     public class SpectralRibbonProcessedData : ProcessedPlotData
     {
-        public SpectralRibbonProcessedData(Guid plotId, double[,] data, byte[] pixelBuffer, int bins, int channelCount, IReadOnlyList<string> channelNames, bool isEmpty)
+        public SpectralRibbonProcessedData(Guid plotId, double[,] data, byte[] pixelBuffer, int bins, int channelCount, int pixelWidth, int pixelHeight, IReadOnlyList<string> channelNames, bool isEmpty)
             : base(plotId, PlotType.SpectralRibbon)
         {
             Data = data;
             PixelBuffer = pixelBuffer;
             Bins = bins;
             ChannelCount = channelCount;
+            PixelWidth = pixelWidth;
+            PixelHeight = pixelHeight;
             ChannelNames = channelNames;
             IsEmpty = isEmpty;
         }
@@ -22,6 +24,8 @@ namespace Worksheet.Models.Data
         public byte[] PixelBuffer { get; }
         public int Bins { get; }
         public int ChannelCount { get; }
+        public int PixelWidth { get; }
+        public int PixelHeight { get; }
 
         public IReadOnlyList<string> ChannelNames { get; }
 

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Threading;
 using System.Windows.Threading;
 using ScottPlot.WPF;
@@ -38,7 +39,9 @@ namespace Worksheet.Services
         {
             lock (_targetsLock)
             {
-                _targets.Add(new RenderTarget(plot, plotView, settings.Id, settings.PlotType));
+                Action<Guid, RenderTargetSize> targetSizeHandler = (plotId, size) => _dataStore.SetRenderTargetSize(plotId, size);
+                plotView.TargetSizeChanged += targetSizeHandler;
+                _targets.Add(new RenderTarget(plot, plotView, settings.Id, settings.PlotType, targetSizeHandler));
             }
         }
 
@@ -46,6 +49,9 @@ namespace Worksheet.Services
         {
             lock (_targetsLock)
             {
+                foreach (var target in _targets.Where(t => t.PlotId == plotId))
+                    target.PlotView.TargetSizeChanged -= target.TargetSizeHandler;
+
                 _targets.RemoveAll(t => t.PlotId == plotId);
             }
 
@@ -190,18 +196,20 @@ namespace Worksheet.Services
 
         private sealed class RenderTarget
         {
-            public RenderTarget(WpfPlot plot, PlotView plotView, Guid plotId, PlotType plotType)
+            public RenderTarget(WpfPlot plot, PlotView plotView, Guid plotId, PlotType plotType, Action<Guid, RenderTargetSize> targetSizeHandler)
             {
                 Plot = plot;
                 PlotView = plotView;
                 PlotId = plotId;
                 PlotType = plotType;
+                TargetSizeHandler = targetSizeHandler;
             }
 
             public WpfPlot Plot { get; }
             public PlotView PlotView { get; }
             public Guid PlotId { get; }
             public PlotType PlotType { get; }
+            public Action<Guid, RenderTargetSize> TargetSizeHandler { get; }
             public object? LastRenderedData { get; set; }
         }
 

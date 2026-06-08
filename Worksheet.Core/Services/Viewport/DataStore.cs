@@ -13,6 +13,7 @@ namespace Worksheet.Services
         private readonly object _lock = new();
         private readonly Dictionary<Guid, PlotSettings> _settings = new();
         private readonly Dictionary<Guid, ProcessedPlotData> _processed = new();
+        private readonly Dictionary<Guid, RenderTargetSize> _renderTargetSizes = new();
         private readonly Dictionary<Guid, GateSettings> _gates = new();
         private readonly Dictionary<Guid, GateResult> _gateResults = new();
         private readonly ViewportModel _viewport = new();
@@ -60,7 +61,26 @@ namespace Worksheet.Services
             {
                 _settings.Remove(plotId);
                 _processed.Remove(plotId);
+                _renderTargetSizes.Remove(plotId);
                 _viewport.PlotIds.Remove(plotId);
+            }
+        }
+
+        public void SetRenderTargetSize(Guid plotId, RenderTargetSize size)
+        {
+            lock (_lock)
+            {
+                _renderTargetSizes[plotId] = size;
+            }
+        }
+
+        public RenderTargetSize GetRenderTargetSize(Guid plotId)
+        {
+            lock (_lock)
+            {
+                return _renderTargetSizes.TryGetValue(plotId, out var size)
+                    ? size
+                    : RenderTargetSize.Empty;
             }
         }
 

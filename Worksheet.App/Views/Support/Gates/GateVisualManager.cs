@@ -478,10 +478,10 @@ namespace Worksheet.Views.Support.Gates
                     var axes = plotItem.Plot.Plot.Axes;
                     var pxTop = plotItem.Plot.Plot.GetPixel(new ScottPlot.Coordinates(xRef, yMax), axes.Bottom, axes.Left);
                     var pxBottom = plotItem.Plot.Plot.GetPixel(new ScottPlot.Coordinates(xRef, yMin), axes.Bottom, axes.Left);
-                    var dpi = VisualTreeHelper.GetDpi(plotItem.Plot);
+                    var dpi = DpiContext.From(plotItem.Plot);
 
-                    yTopDip = Math.Min(pxTop.Y, pxBottom.Y) / dpi.DpiScaleY;
-                    yBottomDip = Math.Max(pxTop.Y, pxBottom.Y) / dpi.DpiScaleY;
+                    yTopDip = Math.Min(pxTop.Y, pxBottom.Y) / dpi.ScaleY;
+                    yBottomDip = Math.Max(pxTop.Y, pxBottom.Y) / dpi.ScaleY;
                 }
                 catch
                 {
@@ -649,12 +649,12 @@ namespace Worksheet.Views.Support.Gates
                 return;
 
             var plot = plotItem.Plot;
-            var dpi = VisualTreeHelper.GetDpi(plot);
+            var dpi = DpiContext.From(plot);
 
-            double x1px = Math.Min(startDip.X, endDip.X) * dpi.DpiScaleX;
-            double y1px = Math.Min(startDip.Y, endDip.Y) * dpi.DpiScaleY;
-            double x2px = Math.Max(startDip.X, endDip.X) * dpi.DpiScaleX;
-            double y2px = Math.Max(startDip.Y, endDip.Y) * dpi.DpiScaleY;
+            double x1px = Math.Min(startDip.X, endDip.X) * dpi.ScaleX;
+            double y1px = Math.Min(startDip.Y, endDip.Y) * dpi.ScaleY;
+            double x2px = Math.Max(startDip.X, endDip.X) * dpi.ScaleX;
+            double y2px = Math.Max(startDip.Y, endDip.Y) * dpi.ScaleY;
 
             var axes = plot.Plot.Axes;
             var c1 = plot.Plot.GetCoordinates((float)x1px, (float)y1px, axes.Bottom, axes.Left);
@@ -732,15 +732,15 @@ namespace Worksheet.Views.Support.Gates
                 return;
 
             var plot = plotItem.Plot;
-            var dpi = VisualTreeHelper.GetDpi(plot);
+            var dpi = DpiContext.From(plot);
             var axes = plot.Plot.Axes;
             int bins = GetBinCount();
 
             var points = new List<ScottPlot.Coordinates>(verticesDip.Count);
             foreach (var p in verticesDip)
             {
-                float pxX = (float)(p.X * dpi.DpiScaleX);
-                float pxY = (float)(p.Y * dpi.DpiScaleY);
+                float pxX = (float)(p.X * dpi.ScaleX);
+                float pxY = (float)(p.Y * dpi.ScaleY);
                 var c = plot.Plot.GetCoordinates(pxX, pxY, axes.Bottom, axes.Left);
                 points.Add(new ScottPlot.Coordinates(
                     Math.Clamp(c.X, 0, bins),
@@ -1147,17 +1147,17 @@ namespace Worksheet.Views.Support.Gates
         {
             mode = GateInteractionMode.None;
             var axes = plotItem.Plot.Plot.Axes;
-            var dpi = VisualTreeHelper.GetDpi(plotItem.Plot);
+            var dpi = DpiContext.From(plotItem.Plot);
             double yLineCoord = lineGate.YMin + (lineGate.YMax - lineGate.YMin) * lineGate.YFraction;
             var leftPx = plotItem.Plot.Plot.GetPixel(new ScottPlot.Coordinates(lineGate.XMin, yLineCoord), axes.Bottom, axes.Left);
             var rightPx = plotItem.Plot.Plot.GetPixel(new ScottPlot.Coordinates(lineGate.XMax, yLineCoord), axes.Bottom, axes.Left);
 
-            double xLeft = leftPx.X / dpi.DpiScaleX;
-            double xRight = rightPx.X / dpi.DpiScaleX;
+            double xLeft = leftPx.X / dpi.ScaleX;
+            double xRight = rightPx.X / dpi.ScaleX;
             if (xLeft > xRight)
                 (xLeft, xRight) = (xRight, xLeft);
 
-            double yLine = leftPx.Y / dpi.DpiScaleY;
+            double yLine = leftPx.Y / dpi.ScaleY;
 
             if (Math.Abs(mouseDip.X - xLeft) <= 8)
             {
@@ -1207,11 +1207,11 @@ namespace Worksheet.Views.Support.Gates
             var topLeftPx = plotItem.Plot.Plot.GetPixel(new ScottPlot.Coordinates(gate.XMin, gate.YMax), axes.Bottom, axes.Left);
             var bottomRightPx = plotItem.Plot.Plot.GetPixel(new ScottPlot.Coordinates(gate.XMax, gate.YMin), axes.Bottom, axes.Left);
 
-            var dpi = VisualTreeHelper.GetDpi(plotItem.Plot);
-            double left = Math.Min(topLeftPx.X, bottomRightPx.X) / dpi.DpiScaleX;
-            double top = Math.Min(topLeftPx.Y, bottomRightPx.Y) / dpi.DpiScaleY;
-            double right = Math.Max(topLeftPx.X, bottomRightPx.X) / dpi.DpiScaleX;
-            double bottom = Math.Max(topLeftPx.Y, bottomRightPx.Y) / dpi.DpiScaleY;
+            var dpi = DpiContext.From(plotItem.Plot);
+            double left = Math.Min(topLeftPx.X, bottomRightPx.X) / dpi.ScaleX;
+            double top = Math.Min(topLeftPx.Y, bottomRightPx.Y) / dpi.ScaleY;
+            double right = Math.Max(topLeftPx.X, bottomRightPx.X) / dpi.ScaleX;
+            double bottom = Math.Max(topLeftPx.Y, bottomRightPx.Y) / dpi.ScaleY;
 
             Canvas.SetLeft(_ellipseBoundsRect, left);
             Canvas.SetTop(_ellipseBoundsRect, top);
@@ -1228,7 +1228,7 @@ namespace Worksheet.Views.Support.Gates
             EnsurePolygonVertexHandleCount(plotItem, gate.Points.Count);
 
             var axes = plotItem.Plot.Plot.Axes;
-            var dpi = VisualTreeHelper.GetDpi(plotItem.Plot);
+            var dpi = DpiContext.From(plotItem.Plot);
 
             for (int i = 0; i < _polygonVertexHandles.Count; i++)
             {
@@ -1241,8 +1241,8 @@ namespace Worksheet.Views.Support.Gates
 
                 var p = gate.Points[i];
                 var px = plotItem.Plot.Plot.GetPixel(p, axes.Bottom, axes.Left);
-                double dipX = px.X / dpi.DpiScaleX;
-                double dipY = px.Y / dpi.DpiScaleY;
+                double dipX = px.X / dpi.ScaleX;
+                double dipY = px.Y / dpi.ScaleY;
                 Canvas.SetLeft(h, dipX - HandleSizeDip / 2);
                 Canvas.SetTop(h, dipY - HandleSizeDip / 2);
                 h.Visibility = Visibility.Visible;
@@ -1285,9 +1285,9 @@ namespace Worksheet.Views.Support.Gates
             var axes = plotItem.Plot.Plot.Axes;
             var px = plotItem.Plot.Plot.GetPixel(new ScottPlot.Coordinates(x, y), axes.Bottom, axes.Left);
 
-            var dpi = VisualTreeHelper.GetDpi(plotItem.Plot);
-            double dipX = px.X / dpi.DpiScaleX;
-            double dipY = px.Y / dpi.DpiScaleY;
+            var dpi = DpiContext.From(plotItem.Plot);
+            double dipX = px.X / dpi.ScaleX;
+            double dipY = px.Y / dpi.ScaleY;
 
             Canvas.SetLeft(handle, dipX - HandleSizeDip / 2);
             Canvas.SetTop(handle, dipY - HandleSizeDip / 2);
@@ -1304,9 +1304,9 @@ namespace Worksheet.Views.Support.Gates
 
         private static ScottPlot.Coordinates MouseToCoord(WpfPlot plot, Point mouseDip)
         {
-            var dpi = VisualTreeHelper.GetDpi(plot);
-            float pxX = (float)(mouseDip.X * dpi.DpiScaleX);
-            float pxY = (float)(mouseDip.Y * dpi.DpiScaleY);
+            var dpi = DpiContext.From(plot);
+            float pxX = (float)(mouseDip.X * dpi.ScaleX);
+            float pxY = (float)(mouseDip.Y * dpi.ScaleY);
             var axes = plot.Plot.Axes;
             return plot.Plot.GetCoordinates(pxX, pxY, axes.Bottom, axes.Left);
         }

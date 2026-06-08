@@ -53,7 +53,7 @@ namespace Worksheet.Views.PlotViews
                 return;
             }
 
-            surface.PresentBitmap(spectralData.PixelBuffer, spectralData.ChannelCount, spectralData.Bins);
+            surface.PresentBitmap(spectralData.PixelBuffer, spectralData.PixelWidth, spectralData.PixelHeight);
         }
 
         public override void Clear(WpfPlot plot)

@@ -6,6 +6,7 @@ using Worksheet.Models;
 using Worksheet.Models.Data;
 using Worksheet.Views.Surfaces;
 using Worksheet.Views.PlotViews.ContextMenus;
+using Worksheet.Views.Support;
 
 namespace Worksheet.Views.PlotViews
 {
@@ -23,6 +24,7 @@ namespace Worksheet.Views.PlotViews
         public PlotContextMenu ContextMenu { get; }
         public PlotSettings Settings { get; }
         public abstract PlotType PlotType { get; }
+        public event Action<Guid, RenderTargetSize>? TargetSizeChanged;
         public abstract void Configure(WpfPlot plot);
         public abstract void Render(WpfPlot plot, ProcessedPlotData data);
         public virtual void InvalidateStatic(WpfPlot plot)
@@ -110,13 +112,10 @@ namespace Worksheet.Views.PlotViews
                 if (dataRect.Width <= 0 || dataRect.Height <= 0)
                     return;
 
-                var dpi = System.Windows.Media.VisualTreeHelper.GetDpi(plot);
-                var rectDip = new Rect(
-                    dataRect.Left / dpi.DpiScaleX,
-                    dataRect.Top / dpi.DpiScaleY,
-                    dataRect.Width / dpi.DpiScaleX,
-                    dataRect.Height / dpi.DpiScaleY);
-                _bitmapSurface.SetDataRect(rectDip);
+                var dpi = DpiContext.From(plot);
+                var rectDip = dpi.PixelsToDips(new Rect(dataRect.Left, dataRect.Top, dataRect.Width, dataRect.Height));
+                _bitmapSurface.SetDataRect(rectDip, dpi);
+                TargetSizeChanged?.Invoke(Settings.Id, new RenderTargetSize(_bitmapSurface.TargetWidth, _bitmapSurface.TargetHeight));
             }
             catch
             {

@@ -57,7 +57,7 @@ namespace Worksheet.Views.PlotViews
                 return;
             }
 
-            surface.PresentBitmap(heatmapData.PixelBuffer, heatmapData.Bins, heatmapData.Bins);
+            surface.PresentBitmap(heatmapData.PixelBuffer, heatmapData.PixelWidth, heatmapData.PixelHeight);
         }
 
         public override void Clear(WpfPlot plot)
