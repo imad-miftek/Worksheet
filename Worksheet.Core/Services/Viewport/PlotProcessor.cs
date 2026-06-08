@@ -9,7 +9,7 @@ namespace Worksheet.Services
 {
     public class PlotProcessor
     {
-        private static readonly byte[] PseudocolorPalette = BuildPseudocolorPalette();
+        private static readonly HeatmapColorPalette HeatmapPalette = HeatmapColorPalette.MellowRainbow;
         private readonly IChannelDataBuffer _buffer;
         private readonly object _stateLock = new();
         private readonly Dictionary<Guid, HistogramProcessingState> _histogramStates = new();
@@ -387,54 +387,9 @@ namespace Worksheet.Services
                 {
                     int binX = Math.Clamp(px * bins / pixelWidth, 0, bins - 1);
                     int pixelIndex = rowOffset + (px * 4);
-                    WriteNormalizedPixel(state.Normalized[binY, binX], state.PixelBuffer, pixelIndex);
+                    HeatmapPalette.WriteNormalizedPixel(state.Normalized[binY, binX], state.PixelBuffer, pixelIndex);
                 }
             }
-        }
-
-        private static byte[] BuildPseudocolorPalette()
-        {
-            IColormap colormap;
-            try
-            {
-                colormap = new ScottPlot.Colormaps.Turbo();
-            }
-            catch
-            {
-                colormap = new ScottPlot.Colormaps.Viridis();
-            }
-
-            var palette = new byte[256 * 4];
-            for (int i = 0; i < 256; i++)
-            {
-                var skColor = colormap.GetColor(i / 255.0).ToSKColor();
-                int offset = i * 4;
-                palette[offset + 0] = skColor.Blue;
-                palette[offset + 1] = skColor.Green;
-                palette[offset + 2] = skColor.Red;
-                palette[offset + 3] = 255;
-            }
-
-            return palette;
-        }
-
-        private static void WriteNormalizedPixel(double normalized, byte[] pixelBuffer, int pixelIndex)
-        {
-            if (double.IsNaN(normalized) || normalized <= 0)
-            {
-                pixelBuffer[pixelIndex + 0] = 255;
-                pixelBuffer[pixelIndex + 1] = 255;
-                pixelBuffer[pixelIndex + 2] = 255;
-                pixelBuffer[pixelIndex + 3] = 0;
-                return;
-            }
-
-            int paletteIndex = Math.Clamp((int)Math.Round(normalized * 255), 0, 255);
-            int paletteOffset = paletteIndex * 4;
-            pixelBuffer[pixelIndex + 0] = PseudocolorPalette[paletteOffset + 0];
-            pixelBuffer[pixelIndex + 1] = PseudocolorPalette[paletteOffset + 1];
-            pixelBuffer[pixelIndex + 2] = PseudocolorPalette[paletteOffset + 2];
-            pixelBuffer[pixelIndex + 3] = PseudocolorPalette[paletteOffset + 3];
         }
 
         private ProcessedPlotData ProcessSpectralRibbon(PlotSettings settings, RenderTargetSize targetSize)
@@ -605,7 +560,7 @@ namespace Worksheet.Services
                 {
                     int channel = Math.Clamp(px * state.ChannelCount / pixelWidth, 0, state.ChannelCount - 1);
                     int pixelIndex = rowOffset + (px * 4);
-                    WriteNormalizedPixel(state.Normalized[binY, channel], state.PixelBuffer, pixelIndex);
+                    HeatmapPalette.WriteNormalizedPixel(state.Normalized[binY, channel], state.PixelBuffer, pixelIndex);
                 }
             }
         }

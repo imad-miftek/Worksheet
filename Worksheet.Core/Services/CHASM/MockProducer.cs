@@ -70,6 +70,14 @@ namespace Worksheet.Services
 
         private async Task RunAsync(CancellationToken token)
         {
+            if (_options.ThroughputMode == ProducerThroughputMode.MaxThroughput)
+                await RunMaxThroughputAsync(token).ConfigureAwait(false);
+            else
+                await RunFixedRateAsync(token).ConfigureAwait(false);
+        }
+
+        private async Task RunFixedRateAsync(CancellationToken token)
+        {
             try
             {
                 using var timer = new PeriodicTimer(_options.AcquisitionInterval);
@@ -88,6 +96,39 @@ namespace Worksheet.Services
             catch (Exception ex)
             {
                 AppLog.Exception(ex, "MockProducer.RunAsync");
+            }
+        }
+
+        private async Task RunMaxThroughputAsync(CancellationToken token)
+        {
+            try
+            {
+                int batchesSinceYield = 0;
+                while (!token.IsCancellationRequested)
+                {
+                    if (!_running)
+                    {
+                        await Task.Delay(1, token).ConfigureAwait(false);
+                        continue;
+                    }
+
+                    var batch = GenerateColumnMajorBatch(_options.BatchSize);
+                    _channel.Writer.TryWrite(batch);
+
+                    batchesSinceYield++;
+                    if (batchesSinceYield >= 16)
+                    {
+                        batchesSinceYield = 0;
+                        await Task.Yield();
+                    }
+                }
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            catch (Exception ex)
+            {
+                AppLog.Exception(ex, "MockProducer.RunMaxThroughputAsync");
             }
         }
 
@@ -121,6 +162,36 @@ namespace Worksheet.Services
             }
 
             return new EventBatch(count, channels, _options.SignalLayout);
+        }
+
+        private ColumnMajorEventBatch GenerateColumnMajorBatch(int count)
+        {
+            var values = new double[_signalCount * count];
+
+            for (int e = 0; e < count; e++)
+            {
+                int pop = SamplePopulation();
+                for (int c = 0; c < _signalCount; c++)
+                {
+                    double logMean = _logMeans[c, pop];
+                    double logSigma = _logSigmas[c, pop];
+
+                    double z = NextStandardNormal();
+                    double log10Value = logMean + logSigma * z;
+                    double value = Math.Pow(10, log10Value);
+
+                    if (double.IsNaN(value) || double.IsInfinity(value))
+                        value = MaxValue;
+                    else if (value < 0)
+                        value = 0;
+                    else if (value > MaxValue)
+                        value = MaxValue;
+
+                    values[(c * count) + e] = value;
+                }
+            }
+
+            return new ColumnMajorEventBatch(count, values, _options.SignalLayout);
         }
 
         private void InitializePopulationModel()

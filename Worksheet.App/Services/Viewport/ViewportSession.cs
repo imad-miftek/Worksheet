@@ -26,11 +26,15 @@ namespace Worksheet.Services
         private DateTime _lastRateSampleUtc = DateTime.UtcNow;
         private double _lastEventRatePerSecond;
 
-        public ViewportSession(Dispatcher dispatcher, TimeSpan processingInterval, TimeSpan renderingInterval)
+        public ViewportSession(
+            Dispatcher dispatcher,
+            TimeSpan processingInterval,
+            TimeSpan renderingInterval,
+            ChasmOptions? chasmOptions = null)
         {
             _dispatcher = dispatcher;
             _dataStore = new DataStore();
-            _chasmOptions = ChasmOptions.Default;
+            _chasmOptions = chasmOptions ?? ChasmOptions.Default;
             _dataSource = new DataSource(_chasmOptions.SignalLayout, _chasmOptions.WindowCapacityEvents);
             _chasmDataSource = new ChasmDataSource(_dataSource);
             var producer = new MockProducer(_chasmOptions);
@@ -49,7 +53,7 @@ namespace Worksheet.Services
         public DataStore DataStore => _dataStore;
         public FeatureSelectionStrategy FeatureSelection => _featureSelection;
         public bool IsStreamingEnabled => _chasm.IsStreamingEnabled;
-        public int WindowCapacity => _dataSource.WindowCapacity;
+        public int WindowCapacity => _chasm.WindowCapacity;
 
         public void Start()
         {
@@ -96,7 +100,7 @@ namespace Worksheet.Services
 
         public void SetWindowCapacity(int windowCapacity)
         {
-            _dataSource.ResizeWindow(windowCapacity);
+            _chasm.SetWindowCapacity(windowCapacity);
         }
 
         public void ClearMemory()

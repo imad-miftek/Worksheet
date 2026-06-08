@@ -9,6 +9,8 @@ namespace Worksheet.Services
         // Optional passthroughs (handy for UI)
         bool IsStreamingEnabled { get; }
         void SetStreamingEnabled(bool enabled);
+        int WindowCapacity { get; }
+        void SetWindowCapacity(int windowCapacity);
     }
 }
 

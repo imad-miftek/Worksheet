@@ -24,6 +24,8 @@ namespace Worksheet.Services
 
         public long DataVersion => _dataSource.DataVersion;
 
+        public int WindowCapacity => _dataSource.WindowCapacity;
+
         public void StartStreaming()
         {
             if (IsStreamingEnabled)
@@ -54,6 +56,8 @@ namespace Worksheet.Services
         }
 
         public void ClearMemory() => _dataSource.ClearMemory();
+
+        public void SetWindowCapacity(int windowCapacity) => _dataSource.SetWindowCapacity(windowCapacity);
 
         public void Dispose()
         {

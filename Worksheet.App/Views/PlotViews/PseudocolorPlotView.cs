@@ -32,7 +32,7 @@ namespace Worksheet.Views.PlotViews
 
         public override void Configure(WpfPlot plot)
         {
-            plot.Plot.DataBackground.Color = ScottPlot.Color.FromHex("#FFFFFFFF");
+            plot.Plot.DataBackground.Color = ScottPlot.Color.FromARGB(0);
             ApplyAxisTicks(plot, resetLimits: true);
             ApplyAxisLabels(plot);
             _lastAppliedConfig = PlotConfigSnapshot.From(Settings);

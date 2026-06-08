@@ -41,6 +41,10 @@ namespace Worksheet.Services
 
         public void SetStreamingEnabled(bool enabled) => _dataSource.SetStreamingEnabled(enabled);
 
+        public int WindowCapacity => _dataSource.WindowCapacity;
+
+        public void SetWindowCapacity(int windowCapacity) => _dataSource.ResizeWindow(windowCapacity);
+
         public ChannelWindowSnapshot GetSnapshot(int featureIndex) => _dataSource.GetSnapshot(featureIndex);
 
         public MultiChannelWindowSnapshot GetSnapshot(params int[] featureIndices) => _dataSource.GetSnapshot(featureIndices);

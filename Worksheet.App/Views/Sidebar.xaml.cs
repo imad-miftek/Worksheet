@@ -46,7 +46,7 @@ namespace Worksheet.Views
             StopStreamingClicked?.Invoke(this, EventArgs.Empty);
         }
 
-        private void RollingWindowTextBox_LostFocus(object sender, RoutedEventArgs e)
+        private void ApplyRollingWindowButton_Click(object sender, RoutedEventArgs e)
         {
             CommitRollingWindowText();
         }

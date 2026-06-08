@@ -27,7 +27,7 @@ namespace Worksheet.Views.PlotViews
             if (channelCount <= 0)
                 channelCount = 1;
 
-            plot.Plot.DataBackground.Color = ScottPlot.Color.FromHex("#FFFFFFFF");
+            plot.Plot.DataBackground.Color = ScottPlot.Color.FromARGB(0);
             ApplyAxesAndTicks(plot, bins, channelCount, resetLimits: true);
             _lastAppliedConfig = SpectralConfigSnapshot.Create(Settings, bins, channelCount);
         }

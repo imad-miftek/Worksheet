@@ -192,7 +192,7 @@ namespace Worksheet.Views.Support
             );
 
             plot.Plot.FigureBackground.Color = ScottPlot.Color.FromARGB(0);
-            plot.Plot.DataBackground.Color = ScottPlot.Color.FromHex("#FFFFFFFF");
+            plot.Plot.DataBackground.Color = ScottPlot.Color.FromARGB(0);
 
             // Show the data-area border so thumbs visually "sit" on it
             plot.Plot.DataBorder.Width = 2;

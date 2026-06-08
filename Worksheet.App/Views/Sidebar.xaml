@@ -79,14 +79,29 @@
                                    FontSize="12"
                                    Foreground="#374151"
                                    Margin="0,0,0,6" />
-                        <TextBox x:Name="RollingWindowTextBox"
-                                 Text="200000"
-                                 Height="30"
-                                 Padding="8,4"
-                                 BorderBrush="#D1D5DB"
-                                 BorderThickness="1"
-                                 LostFocus="RollingWindowTextBox_LostFocus"
-                                 KeyDown="RollingWindowTextBox_KeyDown" />
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="8" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <TextBox x:Name="RollingWindowTextBox"
+                                     Grid.Column="0"
+                                     Text="200000"
+                                     Height="30"
+                                     Padding="8,4"
+                                     BorderBrush="#D1D5DB"
+                                     BorderThickness="1"
+                                     KeyDown="RollingWindowTextBox_KeyDown" />
+
+                            <Button x:Name="ApplyRollingWindowButton"
+                                    Grid.Column="2"
+                                    Content="Apply"
+                                    Height="30"
+                                    Padding="12,0"
+                                    Click="ApplyRollingWindowButton_Click" />
+                        </Grid>
                     </StackPanel>
                 </Grid>
             </Border>

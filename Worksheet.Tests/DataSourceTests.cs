@@ -141,6 +141,34 @@ public sealed class DataSourceTests
     }
 
     [Fact]
+    public void ChasmDataSourceResizeWindowAppliesToNextAppendImmediately()
+    {
+        var source = new DataSource(windowCapacity: 5);
+        var chasmSource = new ChasmDataSource(source);
+        var first = CreateBatch(count: 5);
+        var second = CreateBatch(count: 2);
+
+        for (int e = 0; e < 5; e++)
+            first[2][e] = 20 + e;
+        second[2][0] = 25;
+        second[2][1] = 26;
+
+        chasmSource.Append(new EventBatch(5, first));
+        chasmSource.SetWindowCapacity(3);
+        chasmSource.Append(new EventBatch(2, second));
+
+        var snapshot = source.GetSnapshot(2);
+
+        Assert.Equal(3, chasmSource.WindowCapacity);
+        Assert.Equal(3, source.BufferedEventCount);
+        Assert.Equal(4, snapshot.StartSequence);
+        Assert.Equal(7, snapshot.EndSequence);
+        Assert.Equal(24, snapshot.Values[snapshot.PhysicalIndexForSequence(4)]);
+        Assert.Equal(25, snapshot.Values[snapshot.PhysicalIndexForSequence(5)]);
+        Assert.Equal(26, snapshot.Values[snapshot.PhysicalIndexForSequence(6)]);
+    }
+
+    [Fact]
     public void EventBatchAcceptsCustomSignalLayout()
     {
         var layout = new SignalLayout(6, 9, 60);
