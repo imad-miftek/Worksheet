@@ -26,4 +26,8 @@
     <PackageReference Include="ScottPlot.WPF" Version="5.1.57" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\Worksheet.Core\Worksheet.Core.csproj" />
+  </ItemGroup>
+
 </Project>

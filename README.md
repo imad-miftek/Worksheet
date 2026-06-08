@@ -27,10 +27,9 @@ The app is currently oriented around simulated acquisition through the in-repo `
 
 ## Repository Layout
 
-- `Views/`: WPF windows, controls, dialogs, plot views, axes, and context menus
-- `Models/`: plot settings, worksheet items, processed data, and gate models
-- `Services/Viewport/`: streaming, buffering, processing, rendering, and session orchestration
-- `Services/CHASM/`: bounded mock acquisition pipeline and batch transport types
+- `Worksheet.App/`: WPF application, views, render orchestration, and app startup
+- `Worksheet.Core/`: domain models, CHASM acquisition, buffering, processing, gates, and logging
+- `Worksheet.Tests/`: focused tests for Core behavior
 - `docs/`: architecture notes, audits, coding standards, and research writeups
 
 ## Getting Started
@@ -45,7 +44,7 @@ The app is currently oriented around simulated acquisition through the in-repo `
 
 ```powershell
 dotnet restore
-dotnet run --project .\Worksheet.csproj
+dotnet run --project .\Worksheet.App\Worksheet.App.csproj
 ```
 
 You can also open `Worksheet.sln` in Visual Studio and run the WPF project directly.

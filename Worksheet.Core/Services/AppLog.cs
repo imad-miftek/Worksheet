@@ -119,7 +119,8 @@ namespace Worksheet.Services
         private static bool TryFindRepoRoot(out string repoRoot)
         {
             static bool IsRepoRoot(string dir) =>
-                File.Exists(Path.Combine(dir, "Worksheet.csproj")) ||
+                File.Exists(Path.Combine(dir, "Worksheet.sln")) ||
+                File.Exists(Path.Combine(dir, "Worksheet.App", "Worksheet.App.csproj")) ||
                 Directory.Exists(Path.Combine(dir, ".git"));
 
             // Search upward from current directory first (when running from VS, this is often the repo root)

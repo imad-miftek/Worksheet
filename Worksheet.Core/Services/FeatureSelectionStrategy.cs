@@ -7,7 +7,7 @@ namespace Worksheet.Services
 {
     public class FeatureSelectionStrategy
     {
-        private static ChannelSettings _channelSettings;
+        private static ChannelSettings? _channelSettings;
         private static readonly object _lock = new object();
 
         public static void LoadChannelSettings(string jsonFilePath)
