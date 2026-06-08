@@ -169,8 +169,6 @@ namespace Worksheet.Views.PlotViews
                     plot.Plot.Axes.SetLimitsY(0, settings.GetBinCount());
             }
 
-            plot.Plot.Grid.MinorLineColor = ScottPlot.Colors.Black.WithOpacity(.05);
-            plot.Plot.Grid.MinorLineWidth = 1;
         }
 
         private static void ApplyLogarithmicTicks(WpfPlot plot, AxisOrientation orientation, PlotSettings settings, bool resetLimits)
@@ -189,9 +187,6 @@ namespace Worksheet.Views.PlotViews
                     plot.Plot.Axes.SetLimitsY(0, settings.GetBinCount());
             }
 
-            plot.Plot.Grid.MajorLineColor = ScottPlot.Colors.Black.WithOpacity(.15);
-            plot.Plot.Grid.MinorLineColor = ScottPlot.Colors.Black.WithOpacity(.05);
-            plot.Plot.Grid.MinorLineWidth = 1;
         }
 
         private readonly record struct PlotConfigSnapshot(

@@ -13,6 +13,7 @@ namespace Worksheet.Views.PlotViews
     public abstract class PlotView
     {
         private DynamicBitmap? _bitmapSurface;
+        private Border? _dataRectBacking;
         private Canvas? _overlayCanvas;
 
         protected PlotView(PlotContextMenu contextMenu, PlotSettings settings)
@@ -51,7 +52,13 @@ namespace Worksheet.Views.PlotViews
 
         public void AttachBitmapSurface(WpfPlot plot, DynamicBitmap dynamicSurface)
         {
+            AttachBitmapSurface(plot, dynamicSurface, new Border { Visibility = Visibility.Collapsed });
+        }
+
+        public void AttachBitmapSurface(WpfPlot plot, DynamicBitmap dynamicSurface, Border dataRectBacking)
+        {
             _bitmapSurface = dynamicSurface;
+            _dataRectBacking = dataRectBacking;
             _bitmapSurface.IsHitTestVisible = false;
 
             plot.Plot.RenderManager.RenderFinished += (_, __) => UpdateBitmapSurfaceLayout(plot);
@@ -114,12 +121,24 @@ namespace Worksheet.Views.PlotViews
 
                 var dpi = DpiContext.From(plot);
                 var rectDip = dpi.PixelsToDips(new Rect(dataRect.Left, dataRect.Top, dataRect.Width, dataRect.Height));
+                UpdateDataRectBacking(rectDip);
                 _bitmapSurface.SetDataRect(rectDip, dpi);
                 TargetSizeChanged?.Invoke(Settings.Id, new RenderTargetSize(_bitmapSurface.TargetWidth, _bitmapSurface.TargetHeight));
             }
             catch
             {
             }
+        }
+
+        private void UpdateDataRectBacking(Rect dataRectDip)
+        {
+            if (_dataRectBacking == null)
+                return;
+
+            _dataRectBacking.Width = Math.Max(0, dataRectDip.Width);
+            _dataRectBacking.Height = Math.Max(0, dataRectDip.Height);
+            _dataRectBacking.Margin = new Thickness(dataRectDip.X, dataRectDip.Y, 0, 0);
+            _dataRectBacking.Visibility = Visibility.Visible;
         }
 
         protected void RenderOnce(WpfPlot plot, Action renderAction)

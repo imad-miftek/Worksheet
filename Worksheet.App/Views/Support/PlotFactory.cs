@@ -17,7 +17,7 @@ namespace Worksheet.Views.Support
         {
             { PlotType.Histogram, (280, 200) },
             { PlotType.Pseudocolor, (280, 280) },
-            { PlotType.SpectralRibbon, (700, 200) },
+            { PlotType.SpectralRibbon, (980, 280) },
             { PlotType.Oscilloscope, (560, 280) }
         };
 
@@ -193,6 +193,7 @@ namespace Worksheet.Views.Support
 
             plot.Plot.FigureBackground.Color = ScottPlot.Color.FromARGB(0);
             plot.Plot.DataBackground.Color = ScottPlot.Color.FromARGB(0);
+            plot.Plot.Grid.IsVisible = false;
 
             // Show the data-area border so thumbs visually "sit" on it
             plot.Plot.DataBorder.Width = 2;

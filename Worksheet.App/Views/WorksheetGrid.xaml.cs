@@ -398,7 +398,7 @@ namespace Worksheet.Views
             }
 
             plotView?.AttachOverlay(container.Overlay);
-            plotView?.AttachBitmapSurface(plot, container.DynamicSurface);
+            plotView?.AttachBitmapSurface(plot, container.DynamicSurface, container.DataRectBacking);
             plotView?.AttachContextMenu(plotItem);
             _selectionManager.Register(plotItem, plotItem.OnSelect, plotItem.OnDeselect);
 
@@ -468,7 +468,7 @@ namespace Worksheet.Views
             }
 
             plotView?.AttachOverlay(container.Overlay);
-            plotView?.AttachBitmapSurface(plot, container.DynamicSurface);
+            plotView?.AttachBitmapSurface(plot, container.DynamicSurface, container.DataRectBacking);
             plotView?.AttachContextMenu(plotItem);
 
             // Register with selection manager
