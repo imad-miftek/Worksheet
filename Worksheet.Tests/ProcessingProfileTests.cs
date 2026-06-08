@@ -1,0 +1,155 @@
+using System;
+using System.Diagnostics;
+using System.IO;
+using Worksheet.Models;
+using Worksheet.Models.Data;
+using Worksheet.Services;
+using Xunit;
+using Xunit.Abstractions;
+
+namespace Worksheet.Tests;
+
+public sealed class ProcessingProfileTests
+{
+    private const int ChannelCount = 60;
+    private const int InitialEventCount = 50_000;
+    private const int DeltaEventCount = 5_000;
+
+    private readonly ITestOutputHelper _output;
+
+    public ProcessingProfileTests(ITestOutputHelper output)
+    {
+        _output = output;
+    }
+
+    [Fact]
+    [Trait("Category", "Profile")]
+    public void ProfilePlotProcessorFullRebuildAndDeltaProcessing()
+    {
+        LoadChannelConfiguration();
+
+        ProfilePlot(CreateHistogramSettings(), "Histogram", expectData: data => Assert.IsType<HistogramProcessedData>(data));
+        ProfilePlot(CreatePseudocolorSettings(), "Pseudocolor", expectData: data => Assert.IsType<HeatmapProcessedData>(data));
+        ProfilePlot(CreateSpectralRibbonSettings(), "SpectralRibbon", expectData: data => Assert.IsType<SpectralRibbonProcessedData>(data));
+    }
+
+    private void ProfilePlot(
+        PlotSettings settings,
+        string label,
+        Action<ProcessedPlotData> expectData)
+    {
+        var source = new DataSource(windowCapacity: InitialEventCount + DeltaEventCount);
+        source.AppendBatch(CreateBatch(InitialEventCount, offset: 0), InitialEventCount);
+        var processor = new PlotProcessor(new ChasmDataSource(source));
+
+        var full = Measure(() => processor.Process(settings));
+        Assert.NotNull(full.Result);
+        expectData(full.Result);
+
+        source.AppendBatch(CreateBatch(DeltaEventCount, offset: InitialEventCount), DeltaEventCount);
+
+        var delta = Measure(() => processor.Process(settings));
+        Assert.NotNull(delta.Result);
+        expectData(delta.Result);
+
+        WriteTiming(label, "full", InitialEventCount, full.Elapsed);
+        WriteTiming(label, "delta", DeltaEventCount, delta.Elapsed);
+    }
+
+    private static (ProcessedPlotData? Result, TimeSpan Elapsed) Measure(Func<ProcessedPlotData?> action)
+    {
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+
+        var stopwatch = Stopwatch.StartNew();
+        var result = action();
+        stopwatch.Stop();
+        return (result, stopwatch.Elapsed);
+    }
+
+    private void WriteTiming(string label, string phase, int eventCount, TimeSpan elapsed)
+    {
+        double seconds = Math.Max(elapsed.TotalSeconds, 1e-9);
+        double eventsPerSecond = eventCount / seconds;
+        string line = $"{label} {phase}: {elapsed.TotalMilliseconds:F2} ms, {eventsPerSecond:F0} events/sec";
+
+        _output.WriteLine(line);
+        Console.WriteLine(line);
+    }
+
+    private static PlotSettings CreateHistogramSettings() =>
+        new()
+        {
+            PlotType = PlotType.Histogram,
+            BinCount = 256,
+            XFeature = 0,
+            XAxisScaleType = AxisScaleType.Logarithmic,
+            MinValue = 1,
+            MaxValue = 100_000_000,
+        };
+
+    private static PlotSettings CreatePseudocolorSettings() =>
+        new()
+        {
+            PlotType = PlotType.Pseudocolor,
+            BinCount = 256,
+            XFeature = 0,
+            YFeature = 1,
+            XAxisScaleType = AxisScaleType.Logarithmic,
+            YAxisScaleType = AxisScaleType.Logarithmic,
+            MinValue = 1,
+            MaxValue = 100_000_000,
+        };
+
+    private static PlotSettings CreateSpectralRibbonSettings() =>
+        new()
+        {
+            PlotType = PlotType.SpectralRibbon,
+            BinCount = 256,
+            YAxisScaleType = AxisScaleType.Logarithmic,
+            MinValue = 1,
+            MaxValue = 100_000_000,
+        };
+
+    private static double[][] CreateBatch(int count, int offset)
+    {
+        var channels = new double[ChannelCount][];
+        for (int c = 0; c < channels.Length; c++)
+        {
+            var values = new double[count];
+            for (int e = 0; e < values.Length; e++)
+            {
+                int sequence = offset + e + 1;
+                values[e] = 1 + ((sequence * (c + 3) * 7919) % 100_000_000);
+            }
+
+            channels[c] = values;
+        }
+
+        return channels;
+    }
+
+    private static void LoadChannelConfiguration()
+    {
+        string repoRoot = FindRepoRoot();
+        string channelConfigPath = Path.Combine(repoRoot, "Worksheet.App", "channels.json");
+
+        Assert.True(File.Exists(channelConfigPath), $"Channel config not found: {channelConfigPath}");
+        FeatureSelectionStrategy.LoadChannelSettings(channelConfigPath);
+    }
+
+    private static string FindRepoRoot()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory != null)
+        {
+            if (File.Exists(Path.Combine(directory.FullName, "Worksheet.sln")))
+                return directory.FullName;
+
+            directory = directory.Parent;
+        }
+
+        throw new DirectoryNotFoundException("Could not find repo root containing Worksheet.sln.");
+    }
+}

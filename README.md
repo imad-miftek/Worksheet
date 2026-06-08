@@ -129,6 +129,16 @@ Useful project documents:
 - `docs/CODING_STANDARDS.md`: local coding conventions
 - `docs/AI_AGENT_POLICY.md`: repo-specific agent guidance
 
+### Profiling
+
+Focused Core processing profile tests live in `Worksheet.Tests`.
+
+```powershell
+dotnet test .\Worksheet.Tests\Worksheet.Tests.csproj --no-restore --filter "Category=Profile" --logger "console;verbosity=detailed"
+```
+
+These tests report full-window and delta processing timings for histogram, pseudocolor, and spectral ribbon processing without enforcing machine-specific speed thresholds.
+
 ## Current State
 
 This repository appears to be an actively evolving prototype for interactive multi-plot visualization. The core desktop workflow is in place, and the docs already call out known performance constraints such as full recompute behavior, lock contention in spectral processing, allocation pressure in pseudocolor processing, and synchronous UI render dispatch.
