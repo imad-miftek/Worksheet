@@ -62,6 +62,69 @@ public sealed class IngestionProfileTests
         WriteThroughput($"Generate+append {lasers}x{features}x{channels}", layout, BatchCount * BatchSize, elapsed);
     }
 
+    [Theory]
+    [Trait("Category", "Profile")]
+    [InlineData(1, 1, 60)]
+    [InlineData(6, 9, 50)]
+    [InlineData(6, 9, 60)]
+    public void ProfileBatchAllocationOnly(int lasers, int features, int channels)
+    {
+        var layout = new SignalLayout(lasers, features, channels);
+        double[][]? last = null;
+
+        var elapsed = Measure(() =>
+        {
+            for (int i = 0; i < BatchCount; i++)
+                last = AllocateBatch(layout.SignalCount, BatchSize);
+        });
+
+        Assert.NotNull(last);
+        WriteThroughput($"Allocate batch arrays {lasers}x{features}x{channels}", layout, BatchCount * BatchSize, elapsed);
+    }
+
+    [Theory]
+    [Trait("Category", "Profile")]
+    [InlineData(1, 1, 60)]
+    [InlineData(6, 9, 50)]
+    [InlineData(6, 9, 60)]
+    public void ProfileFillReusedBatchOnly(int lasers, int features, int channels)
+    {
+        var layout = new SignalLayout(lasers, features, channels);
+        var batch = AllocateBatch(layout.SignalCount, BatchSize);
+
+        var elapsed = Measure(() =>
+        {
+            for (int i = 0; i < BatchCount; i++)
+                FillBatch(batch, offset: i * BatchSize);
+        });
+
+        WriteThroughput($"Fill reused batch {lasers}x{features}x{channels}", layout, BatchCount * BatchSize, elapsed);
+    }
+
+    [Theory]
+    [Trait("Category", "Profile")]
+    [InlineData(1, 1, 60)]
+    [InlineData(6, 9, 50)]
+    [InlineData(6, 9, 60)]
+    public void ProfileFillReusedBatchAndAppend(int lasers, int features, int channels)
+    {
+        var layout = new SignalLayout(lasers, features, channels);
+        var source = new DataSource(layout, windowCapacity: BatchCount * BatchSize);
+        var batch = AllocateBatch(layout.SignalCount, BatchSize);
+
+        var elapsed = Measure(() =>
+        {
+            for (int i = 0; i < BatchCount; i++)
+            {
+                FillBatch(batch, offset: i * BatchSize);
+                source.AppendBatch(batch, BatchSize);
+            }
+        });
+
+        Assert.Equal(BatchCount * BatchSize, source.TotalEventsIngested);
+        WriteThroughput($"Fill reused+append {lasers}x{features}x{channels}", layout, BatchCount * BatchSize, elapsed);
+    }
+
     private static TimeSpan Measure(Action action)
     {
         GC.Collect();
@@ -89,16 +152,27 @@ public sealed class IngestionProfileTests
 
     private static double[][] CreateBatch(int signalCount, int count, int offset)
     {
+        var signals = AllocateBatch(signalCount, count);
+        FillBatch(signals, offset);
+        return signals;
+    }
+
+    private static double[][] AllocateBatch(int signalCount, int count)
+    {
         var signals = new double[signalCount][];
         for (int s = 0; s < signals.Length; s++)
-        {
-            var values = new double[count];
-            for (int e = 0; e < values.Length; e++)
-                values[e] = 1 + (((offset + e + 1) * (s + 3) * 7919) % 100_000_000);
-
-            signals[s] = values;
-        }
+            signals[s] = new double[count];
 
         return signals;
+    }
+
+    private static void FillBatch(double[][] signals, int offset)
+    {
+        for (int s = 0; s < signals.Length; s++)
+        {
+            var values = signals[s];
+            for (int e = 0; e < values.Length; e++)
+                values[e] = 1 + (((offset + e + 1) * (s + 3) * 7919) % 100_000_000);
+        }
     }
 }
