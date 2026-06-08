@@ -192,14 +192,14 @@ namespace Worksheet.Views
 
             // Row 1: 2 pseudocolors + 1 spectral ribbon
             AddConfiguredPseudocolor(x, startY, "QPD H", "QPD V");
-            x += 200 + LayoutMargin;
+            x += 280 + LayoutMargin;
 
             AddConfiguredPseudocolor(x, startY, "372nm", "293nm");
-            x += 200 + LayoutMargin;
+            x += 280 + LayoutMargin;
 
             AddConfiguredSpectralRibbon(x, startY);
 
-            double rowHeight = 200; // pseudocolor default height
+            double rowHeight = 280; // pseudocolor default height
             double histStartY = startY + rowHeight + LayoutMargin;
 
             // Row 2+: histograms for all channels
@@ -240,8 +240,8 @@ namespace Worksheet.Views
                 ? Enumerable.Range(0, 60).ToList()
                 : indices.ToList();
 
-            const double plotWidth = 200;
-            const double plotHeight = 150;
+            const double plotWidth = 280;
+            const double plotHeight = 200;
             int plotsPerRow = Math.Max(1, (int)((worksheetWidth - LayoutMargin) / (plotWidth + LayoutMargin)));
 
             for (int i = 0; i < ids.Count; i++)

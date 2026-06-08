@@ -15,10 +15,10 @@ namespace Worksheet.Views.Support
     {
         private static readonly Dictionary<PlotType, (double width, double height)> DefaultPlotSizes = new()
         {
-            { PlotType.Histogram, (200, 150) },
-            { PlotType.Pseudocolor, (200, 200) },
-            { PlotType.SpectralRibbon, (500, 150) },
-            { PlotType.Oscilloscope, (400, 200) }
+            { PlotType.Histogram, (280, 200) },
+            { PlotType.Pseudocolor, (280, 280) },
+            { PlotType.SpectralRibbon, (700, 200) },
+            { PlotType.Oscilloscope, (560, 280) }
         };
 
         private readonly AxisFactory _axisFactory;
