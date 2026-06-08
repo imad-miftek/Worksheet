@@ -137,7 +137,7 @@ Focused Core processing profile tests live in `Worksheet.Tests`.
 dotnet test .\Worksheet.Tests\Worksheet.Tests.csproj --no-restore --filter "Category=Profile" --logger "console;verbosity=detailed"
 ```
 
-These tests report full-window and delta processing timings for histogram, pseudocolor, and spectral ribbon processing without enforcing machine-specific speed thresholds.
+These tests report full-window and delta processing timings for histogram, pseudocolor, and spectral ribbon processing, plus WPF plot-view render-method timings. They do not enforce machine-specific speed thresholds. Render timings measure the app's `PlotView.Render()` paths on an STA thread, not full dispatcher scheduling or monitor frame latency.
 
 ## Current State
 
