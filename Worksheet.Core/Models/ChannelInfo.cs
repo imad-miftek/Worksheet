@@ -7,7 +7,7 @@ namespace Worksheet.Models
         public string Wavelength { get; set; }
         public string ExportedName { get; set; }
 
-        public ChannelInfo(int id, string daqChannel, string wavelength, string exportedName = null)
+        public ChannelInfo(int id, string daqChannel, string wavelength, string? exportedName = null)
         {
             Id = id;
             DaqChannel = daqChannel;

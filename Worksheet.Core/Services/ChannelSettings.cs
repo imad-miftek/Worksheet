@@ -122,8 +122,11 @@ namespace Worksheet.Services
 
         private class NaturalChannelComparer : IComparer<string>
         {
-            public int Compare(string x, string y)
+            public int Compare(string? x, string? y)
             {
+                x ??= string.Empty;
+                y ??= string.Empty;
+
                 var xParts = GetSortKey(x);
                 var yParts = GetSortKey(y);
 

@@ -1,0 +1,75 @@
+using System;
+using Worksheet.Services;
+using Xunit;
+
+namespace Worksheet.Tests;
+
+public sealed class DataSourceTests
+{
+    [Fact]
+    public void AppendBatchStoresSelectedChannelValuesInSequenceOrder()
+    {
+        var source = new DataSource(windowCapacity: 5);
+        var batch = CreateBatch(count: 3);
+
+        batch[7][0] = 70;
+        batch[7][1] = 71;
+        batch[7][2] = 72;
+
+        source.AppendBatch(batch, count: 3);
+
+        var snapshot = source.GetSnapshot(7);
+
+        Assert.Equal(3, snapshot.Count);
+        Assert.Equal(0, snapshot.StartSequence);
+        Assert.Equal(3, snapshot.EndSequence);
+        Assert.Equal(70, snapshot.Values[snapshot.PhysicalIndexForSequence(0)]);
+        Assert.Equal(71, snapshot.Values[snapshot.PhysicalIndexForSequence(1)]);
+        Assert.Equal(72, snapshot.Values[snapshot.PhysicalIndexForSequence(2)]);
+    }
+
+    [Fact]
+    public void AppendBatchRetainsOnlyRollingWindowWhenCapacityIsExceeded()
+    {
+        var source = new DataSource(windowCapacity: 3);
+        var first = CreateBatch(count: 2);
+        var second = CreateBatch(count: 3);
+
+        first[2][0] = 20;
+        first[2][1] = 21;
+        second[2][0] = 22;
+        second[2][1] = 23;
+        second[2][2] = 24;
+
+        source.AppendBatch(first, count: 2);
+        source.AppendBatch(second, count: 3);
+
+        var snapshot = source.GetSnapshot(2);
+
+        Assert.Equal(3, snapshot.Count);
+        Assert.Equal(2, snapshot.StartSequence);
+        Assert.Equal(5, snapshot.EndSequence);
+        Assert.Equal(22, snapshot.Values[snapshot.PhysicalIndexForSequence(2)]);
+        Assert.Equal(23, snapshot.Values[snapshot.PhysicalIndexForSequence(3)]);
+        Assert.Equal(24, snapshot.Values[snapshot.PhysicalIndexForSequence(4)]);
+    }
+
+    [Fact]
+    public void EventBatchRejectsWrongChannelCount()
+    {
+        var channels = new double[59][];
+        for (int i = 0; i < channels.Length; i++)
+            channels[i] = new double[1];
+
+        Assert.Throws<ArgumentException>(() => new EventBatch(1, channels));
+    }
+
+    private static double[][] CreateBatch(int count)
+    {
+        var channels = new double[60][];
+        for (int i = 0; i < channels.Length; i++)
+            channels[i] = new double[count];
+
+        return channels;
+    }
+}
