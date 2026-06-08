@@ -119,7 +119,7 @@ public sealed class DataSourceTests
     public void AppendColumnMajorBatchRetainsOnlyRollingWindowWhenCapacityIsExceeded()
     {
         var source = new DataSource(windowCapacity: 3);
-        var values = CreateColumnMajorBatch(signalCount: 60, count: 5);
+        var values = CreateColumnMajorBatch(signalCount: SignalLayout.Default.SignalCount, count: 5);
 
         values[(2 * 5) + 0] = 20;
         values[(2 * 5) + 1] = 21;
