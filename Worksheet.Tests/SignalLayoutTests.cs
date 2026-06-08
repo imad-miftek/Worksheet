@@ -7,14 +7,14 @@ namespace Worksheet.Tests;
 public sealed class SignalLayoutTests
 {
     [Fact]
-    public void DefaultLayoutMatchesCurrentSixtySignalShape()
+    public void DefaultLayoutMatchesConnectedChannelEventShape()
     {
         var layout = SignalLayout.Default;
 
         Assert.Equal(1, layout.LaserCount);
         Assert.Equal(1, layout.FeatureCount);
-        Assert.Equal(60, layout.ChannelCount);
-        Assert.Equal(60, layout.SignalCount);
+        Assert.Equal(51, layout.ChannelCount);
+        Assert.Equal(51, layout.SignalCount);
     }
 
     [Fact]

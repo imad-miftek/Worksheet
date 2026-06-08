@@ -12,7 +12,7 @@ namespace Worksheet.Tests;
 
 public sealed class ProcessingProfileTests
 {
-    private const int ChannelCount = 60;
+    private const int ChannelCount = SignalLayout.DefaultChannelCount;
     private const int InitialEventCount = 50_000;
     private const int DeltaEventCount = 5_000;
     private const int LargeLayoutEventCount = 2_000;

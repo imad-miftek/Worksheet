@@ -37,6 +37,9 @@ namespace Worksheet.Services
 
         private bool LoadFromJson(string jsonFilePath)
         {
+            Channels.Clear();
+            AllChannels.Clear();
+
             var jsonText = File.ReadAllText(jsonFilePath);
             var jsonDoc = JsonDocument.Parse(jsonText);
 
@@ -46,8 +49,9 @@ namespace Worksheet.Services
                 return false;
             }
 
-            // Parse channels in order (don't sort - keep JSON order to match DataSource)
-            int id = 0;
+            // Parse source slots in file order. Connected channels get compact event-column IDs.
+            int sourceSlotId = 0;
+            int connectedId = 0;
             foreach (var property in channelsElement.EnumerateObject())
             {
                 var key = property.Name;
@@ -55,16 +59,16 @@ namespace Worksheet.Services
 
                 if (!string.IsNullOrEmpty(value))
                 {
-                    var channelInfo = new ChannelInfo(id, key, value, value);
-                    AllChannels.Add(channelInfo);
+                    AllChannels.Add(new ChannelInfo(sourceSlotId, key, value, value));
 
                     // Only add connected channels
                     if (!Disconnected.Contains(value.ToLower()))
                     {
-                        Channels.Add(channelInfo);
+                        Channels.Add(new ChannelInfo(connectedId, key, value, value));
+                        connectedId++;
                     }
 
-                    id++;
+                    sourceSlotId++;
                 }
             }
 
@@ -89,18 +93,29 @@ namespace Worksheet.Services
 
         public List<string> GetAdcChannelsFiltered()
         {
-            return Channels
-                .Where(c => IsNumericWavelength(c.Wavelength))
+            return GetFilteredNumericChannelsSorted()
                 .Select(c => c.Wavelength)
                 .ToList();
         }
 
         public List<int> GetAdcIndicesFiltered()
         {
-            return Channels
-                .Where(c => IsNumericWavelength(c.Wavelength))
+            return GetFilteredNumericChannelsSorted()
                 .Select(c => c.Id)
                 .ToList();
+        }
+
+        public string GetConnectedChannelName(int channelId)
+        {
+            var channel = Channels.FirstOrDefault(c => c.Id == channelId);
+            return channel?.Wavelength ?? string.Empty;
+        }
+
+        private IEnumerable<ChannelInfo> GetFilteredNumericChannelsSorted()
+        {
+            return Channels
+                .Where(c => IsNumericWavelength(c.Wavelength))
+                .OrderBy(c => c.Wavelength, StringComparer.Ordinal);
         }
 
         private bool IsNumericWavelength(string wavelength)

@@ -162,8 +162,7 @@ namespace Worksheet.Views
 
             if (indices.Count == 0)
             {
-                const int fallbackChannelCount = 60;
-                for (int i = 0; i < fallbackChannelCount; i++)
+                for (int i = 0; i < SignalLayout.DefaultChannelCount; i++)
                     AddHistogramPlotForChannel(i);
                 return;
             }
@@ -237,7 +236,7 @@ namespace Worksheet.Views
         {
             var indices = _viewportSession.FeatureSelection.GetXFeatureIndices(PlotType.Histogram);
             List<int> ids = indices.Count == 0
-                ? Enumerable.Range(0, 60).ToList()
+                ? Enumerable.Range(0, SignalLayout.DefaultChannelCount).ToList()
                 : indices.ToList();
 
             const double plotWidth = 280;

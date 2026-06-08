@@ -6,7 +6,7 @@ namespace Worksheet.Models
     {
         public const int DefaultLaserCount = 1;
         public const int DefaultFeatureCount = 1;
-        public const int DefaultChannelCount = 60;
+        public const int DefaultChannelCount = 51;
 
         public SignalLayout(int laserCount, int featureCount, int channelCount)
         {

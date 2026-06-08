@@ -78,13 +78,13 @@ namespace Worksheet.Services
                     return false;
                 }
 
-                if (channelId < 0 || channelId >= _channelSettings.AllChannels.Count)
+                wavelength = _channelSettings.GetConnectedChannelName(channelId);
+                if (string.IsNullOrEmpty(wavelength))
                 {
                     wavelength = string.Empty;
                     return false;
                 }
 
-                wavelength = _channelSettings.AllChannels[channelId].Wavelength;
                 return true;
             }
         }

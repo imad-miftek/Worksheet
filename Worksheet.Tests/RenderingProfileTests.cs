@@ -18,7 +18,7 @@ namespace Worksheet.Tests;
 
 public sealed class RenderingProfileTests
 {
-    private const int ChannelCount = 60;
+    private const int ChannelCount = SignalLayout.DefaultChannelCount;
     private const int EventCount = 50_000;
     private const int Iterations = 25;
 
