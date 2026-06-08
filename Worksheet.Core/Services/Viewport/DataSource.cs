@@ -176,6 +176,47 @@ namespace Worksheet.Services
             }
         }
 
+        public void AppendBatch(ColumnMajorEventBatch batch)
+        {
+            if (batch == null)
+                throw new ArgumentNullException(nameof(batch));
+
+            AppendBatchColumnMajor(batch.Values, batch.Count);
+        }
+
+        public void AppendBatchColumnMajor(double[] values, int count)
+        {
+            if (values == null)
+                throw new ArgumentNullException(nameof(values));
+            if (count < 0)
+                throw new ArgumentOutOfRangeException(nameof(count));
+            if (count == 0)
+                return;
+
+            int expectedLength = checked(_signalCount * count);
+            if (values.Length != expectedLength)
+                throw new ArgumentException($"values must have length {expectedLength}.", nameof(values));
+
+            int sourceOffset = Math.Max(0, count - _windowCapacity);
+            int retainedCount = count - sourceOffset;
+            if (retainedCount <= 0)
+                return;
+
+            lock (_lock)
+            {
+                for (int c = 0; c < _signalCount; c++)
+                {
+                    int signalOffset = checked(c * count);
+                    CopyIntoRing(_channels[c], values, signalOffset + sourceOffset, retainedCount);
+                }
+
+                _writeIndex = (_writeIndex + retainedCount) % _windowCapacity;
+                _count = Math.Min(_count + retainedCount, _windowCapacity);
+                _totalEventsIngested += count;
+                _dataVersion++;
+            }
+        }
+
         private void CopyIntoRing(double[] destination, double[] source, int sourceOffset, int count)
         {
             int firstSegment = Math.Min(count, _windowCapacity - _writeIndex);

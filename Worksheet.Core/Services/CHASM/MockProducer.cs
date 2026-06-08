@@ -11,7 +11,7 @@ namespace Worksheet.Services
         private const double MaxValue = 100_000_000d;
 
         private readonly ChasmOptions _options;
-        private readonly Channel<EventBatch> _channel;
+        private readonly Channel<IEventBatch> _channel;
         private readonly int _signalCount;
 
         private CancellationTokenSource? _cts;
@@ -36,13 +36,13 @@ namespace Worksheet.Services
                 SingleReader = true,
                 SingleWriter = true,
             };
-            _channel = Channel.CreateBounded<EventBatch>(bounded);
+            _channel = Channel.CreateBounded<IEventBatch>(bounded);
 
             _rng = new Random(_options.Seed);
             InitializePopulationModel();
         }
 
-        public ChannelReader<EventBatch> Reader => _channel.Reader;
+        public ChannelReader<IEventBatch> Reader => _channel.Reader;
 
         public void Start()
         {

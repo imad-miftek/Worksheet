@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Runtime.CompilerServices;
 using Worksheet.Models;
 using Worksheet.Models.Data;
 using Worksheet.Services;
@@ -173,15 +174,21 @@ public sealed class ProcessingProfileTests
         FeatureSelectionStrategy.LoadChannelSettings(channelConfigPath);
     }
 
-    private static string FindRepoRoot()
+    private static string FindRepoRoot([CallerFilePath] string sourceFilePath = "")
     {
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory != null)
+        foreach (var startPath in new[] { AppContext.BaseDirectory, Environment.CurrentDirectory, Path.GetDirectoryName(sourceFilePath) })
         {
-            if (File.Exists(Path.Combine(directory.FullName, "Worksheet.sln")))
-                return directory.FullName;
+            if (string.IsNullOrWhiteSpace(startPath))
+                continue;
 
-            directory = directory.Parent;
+            var directory = new DirectoryInfo(startPath);
+            while (directory != null)
+            {
+                if (File.Exists(Path.Combine(directory.FullName, "Worksheet.sln")))
+                    return directory.FullName;
+
+                directory = directory.Parent;
+            }
         }
 
         throw new DirectoryNotFoundException("Could not find repo root containing Worksheet.sln.");

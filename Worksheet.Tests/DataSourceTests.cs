@@ -90,6 +90,54 @@ public sealed class DataSourceTests
     }
 
     [Fact]
+    public void AppendColumnMajorBatchStoresSelectedLaserFeatureChannelColumn()
+    {
+        var layout = new SignalLayout(6, 9, 60);
+        int signalIndex = layout.ToIndex(2, 4, 17);
+        var source = new DataSource(layout, windowCapacity: 4);
+        var values = CreateColumnMajorBatch(layout.SignalCount, count: 4);
+
+        values[(signalIndex * 4) + 0] = 1_337;
+        values[(signalIndex * 4) + 1] = 1_338;
+        values[(signalIndex * 4) + 2] = 1_339;
+        values[(signalIndex * 4) + 3] = 1_340;
+
+        source.AppendBatch(new ColumnMajorEventBatch(4, values, layout));
+
+        var snapshot = source.GetSnapshot(signalIndex);
+
+        Assert.Equal(layout.SignalCount, source.SignalCount);
+        Assert.Equal(1_337, snapshot.Values[snapshot.PhysicalIndexForSequence(0)]);
+        Assert.Equal(1_338, snapshot.Values[snapshot.PhysicalIndexForSequence(1)]);
+        Assert.Equal(1_339, snapshot.Values[snapshot.PhysicalIndexForSequence(2)]);
+        Assert.Equal(1_340, snapshot.Values[snapshot.PhysicalIndexForSequence(3)]);
+    }
+
+    [Fact]
+    public void AppendColumnMajorBatchRetainsOnlyRollingWindowWhenCapacityIsExceeded()
+    {
+        var source = new DataSource(windowCapacity: 3);
+        var values = CreateColumnMajorBatch(signalCount: 60, count: 5);
+
+        values[(2 * 5) + 0] = 20;
+        values[(2 * 5) + 1] = 21;
+        values[(2 * 5) + 2] = 22;
+        values[(2 * 5) + 3] = 23;
+        values[(2 * 5) + 4] = 24;
+
+        source.AppendBatchColumnMajor(values, count: 5);
+
+        var snapshot = source.GetSnapshot(2);
+
+        Assert.Equal(3, snapshot.Count);
+        Assert.Equal(2, snapshot.StartSequence);
+        Assert.Equal(5, snapshot.EndSequence);
+        Assert.Equal(22, snapshot.Values[snapshot.PhysicalIndexForSequence(2)]);
+        Assert.Equal(23, snapshot.Values[snapshot.PhysicalIndexForSequence(3)]);
+        Assert.Equal(24, snapshot.Values[snapshot.PhysicalIndexForSequence(4)]);
+    }
+
+    [Fact]
     public void EventBatchAcceptsCustomSignalLayout()
     {
         var layout = new SignalLayout(6, 9, 60);
@@ -108,5 +156,10 @@ public sealed class DataSourceTests
             channels[i] = new double[count];
 
         return channels;
+    }
+
+    private static double[] CreateColumnMajorBatch(int signalCount, int count)
+    {
+        return new double[signalCount * count];
     }
 }

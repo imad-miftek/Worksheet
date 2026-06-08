@@ -4,7 +4,7 @@ namespace Worksheet.Services
 {
     public interface IProducer
     {
-        ChannelReader<EventBatch> Reader { get; }
+        ChannelReader<IEventBatch> Reader { get; }
         void Start();
         void Stop();
     }

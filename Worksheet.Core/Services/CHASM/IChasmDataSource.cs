@@ -2,7 +2,7 @@ namespace Worksheet.Services
 {
     public interface IChasmDataSource : IChannelDataBuffer
     {
-        void Append(EventBatch batch);
+        void Append(IEventBatch batch);
         void ClearMemory();
         long DataVersion { get; }
 

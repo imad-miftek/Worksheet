@@ -44,6 +44,27 @@ public sealed class IngestionProfileTests
     [InlineData(1, 1, 60)]
     [InlineData(6, 9, 50)]
     [InlineData(6, 9, 60)]
+    public void ProfileFlatColumnMajorStorageBandwidth(int lasers, int features, int channels)
+    {
+        var layout = new SignalLayout(lasers, features, channels);
+        var source = new DataSource(layout, windowCapacity: BatchCount * BatchSize);
+        var batch = CreateFlatColumnMajorBatch(layout.SignalCount, BatchSize, offset: 0);
+
+        var elapsed = Measure(() =>
+        {
+            for (int i = 0; i < BatchCount; i++)
+                source.AppendBatchColumnMajor(batch, BatchSize);
+        });
+
+        Assert.Equal(BatchCount * BatchSize, source.TotalEventsIngested);
+        WriteThroughput($"Append prebuilt flat column-major {lasers}x{features}x{channels}", layout, BatchCount * BatchSize, elapsed);
+    }
+
+    [Theory]
+    [Trait("Category", "Profile")]
+    [InlineData(1, 1, 60)]
+    [InlineData(6, 9, 50)]
+    [InlineData(6, 9, 60)]
     public void ProfileIngestionGenerateAndStoreThroughput(int lasers, int features, int channels)
     {
         var layout = new SignalLayout(lasers, features, channels);
@@ -87,6 +108,26 @@ public sealed class IngestionProfileTests
     [InlineData(1, 1, 60)]
     [InlineData(6, 9, 50)]
     [InlineData(6, 9, 60)]
+    public void ProfileFlatColumnMajorAllocationOnly(int lasers, int features, int channels)
+    {
+        var layout = new SignalLayout(lasers, features, channels);
+        double[]? last = null;
+
+        var elapsed = Measure(() =>
+        {
+            for (int i = 0; i < BatchCount; i++)
+                last = AllocateFlatColumnMajorBatch(layout.SignalCount, BatchSize);
+        });
+
+        Assert.NotNull(last);
+        WriteThroughput($"Allocate flat column-major {lasers}x{features}x{channels}", layout, BatchCount * BatchSize, elapsed);
+    }
+
+    [Theory]
+    [Trait("Category", "Profile")]
+    [InlineData(1, 1, 60)]
+    [InlineData(6, 9, 50)]
+    [InlineData(6, 9, 60)]
     public void ProfileFillReusedBatchOnly(int lasers, int features, int channels)
     {
         var layout = new SignalLayout(lasers, features, channels);
@@ -99,6 +140,25 @@ public sealed class IngestionProfileTests
         });
 
         WriteThroughput($"Fill reused batch {lasers}x{features}x{channels}", layout, BatchCount * BatchSize, elapsed);
+    }
+
+    [Theory]
+    [Trait("Category", "Profile")]
+    [InlineData(1, 1, 60)]
+    [InlineData(6, 9, 50)]
+    [InlineData(6, 9, 60)]
+    public void ProfileFillReusedFlatColumnMajorOnly(int lasers, int features, int channels)
+    {
+        var layout = new SignalLayout(lasers, features, channels);
+        var batch = AllocateFlatColumnMajorBatch(layout.SignalCount, BatchSize);
+
+        var elapsed = Measure(() =>
+        {
+            for (int i = 0; i < BatchCount; i++)
+                FillFlatColumnMajorBatch(batch, layout.SignalCount, BatchSize, offset: i * BatchSize);
+        });
+
+        WriteThroughput($"Fill reused flat column-major {lasers}x{features}x{channels}", layout, BatchCount * BatchSize, elapsed);
     }
 
     [Theory]
@@ -123,6 +183,30 @@ public sealed class IngestionProfileTests
 
         Assert.Equal(BatchCount * BatchSize, source.TotalEventsIngested);
         WriteThroughput($"Fill reused+append {lasers}x{features}x{channels}", layout, BatchCount * BatchSize, elapsed);
+    }
+
+    [Theory]
+    [Trait("Category", "Profile")]
+    [InlineData(1, 1, 60)]
+    [InlineData(6, 9, 50)]
+    [InlineData(6, 9, 60)]
+    public void ProfileFillReusedFlatColumnMajorAndAppend(int lasers, int features, int channels)
+    {
+        var layout = new SignalLayout(lasers, features, channels);
+        var source = new DataSource(layout, windowCapacity: BatchCount * BatchSize);
+        var batch = AllocateFlatColumnMajorBatch(layout.SignalCount, BatchSize);
+
+        var elapsed = Measure(() =>
+        {
+            for (int i = 0; i < BatchCount; i++)
+            {
+                FillFlatColumnMajorBatch(batch, layout.SignalCount, BatchSize, offset: i * BatchSize);
+                source.AppendBatchColumnMajor(batch, BatchSize);
+            }
+        });
+
+        Assert.Equal(BatchCount * BatchSize, source.TotalEventsIngested);
+        WriteThroughput($"Fill reused flat column-major+append {lasers}x{features}x{channels}", layout, BatchCount * BatchSize, elapsed);
     }
 
     private static TimeSpan Measure(Action action)
@@ -157,6 +241,13 @@ public sealed class IngestionProfileTests
         return signals;
     }
 
+    private static double[] CreateFlatColumnMajorBatch(int signalCount, int count, int offset)
+    {
+        var values = AllocateFlatColumnMajorBatch(signalCount, count);
+        FillFlatColumnMajorBatch(values, signalCount, count, offset);
+        return values;
+    }
+
     private static double[][] AllocateBatch(int signalCount, int count)
     {
         var signals = new double[signalCount][];
@@ -166,6 +257,11 @@ public sealed class IngestionProfileTests
         return signals;
     }
 
+    private static double[] AllocateFlatColumnMajorBatch(int signalCount, int count)
+    {
+        return new double[signalCount * count];
+    }
+
     private static void FillBatch(double[][] signals, int offset)
     {
         for (int s = 0; s < signals.Length; s++)
@@ -173,6 +269,16 @@ public sealed class IngestionProfileTests
             var values = signals[s];
             for (int e = 0; e < values.Length; e++)
                 values[e] = 1 + (((offset + e + 1) * (s + 3) * 7919) % 100_000_000);
+        }
+    }
+
+    private static void FillFlatColumnMajorBatch(double[] values, int signalCount, int count, int offset)
+    {
+        for (int s = 0; s < signalCount; s++)
+        {
+            int signalOffset = s * count;
+            for (int e = 0; e < count; e++)
+                values[signalOffset + e] = 1 + (((offset + e + 1) * (s + 3) * 7919) % 100_000_000);
         }
     }
 }

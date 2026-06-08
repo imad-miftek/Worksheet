@@ -3,7 +3,7 @@ using Worksheet.Models;
 
 namespace Worksheet.Services
 {
-    public sealed class EventBatch
+    public sealed class EventBatch : IEventBatch
     {
         public int Count { get; }
         public double[][] Channels { get; }

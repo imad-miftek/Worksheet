@@ -12,12 +12,25 @@ namespace Worksheet.Services
             _dataSource = dataSource ?? throw new ArgumentNullException(nameof(dataSource));
         }
 
-        public void Append(EventBatch batch)
+        public void Append(IEventBatch batch)
         {
+            if (batch == null)
+                throw new ArgumentNullException(nameof(batch));
+
             if (batch.Count <= 0)
                 return;
 
-            _dataSource.AppendBatch(batch.Channels, batch.Count);
+            switch (batch)
+            {
+                case EventBatch eventBatch:
+                    _dataSource.AppendBatch(eventBatch.Channels, eventBatch.Count);
+                    break;
+                case ColumnMajorEventBatch columnMajorBatch:
+                    _dataSource.AppendBatch(columnMajorBatch);
+                    break;
+                default:
+                    throw new NotSupportedException($"Unsupported event batch type {batch.GetType().FullName}.");
+            }
         }
 
         public void ClearMemory() => _dataSource.ClearMemory();
