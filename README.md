@@ -122,6 +122,39 @@ flowchart LR
     Views --> Screen
 ```
 
+CHASM is the ingestion/lifecycle side of the system. The rolling memory buffer is `DataSource`:
+
+```mermaid
+flowchart LR
+    Chasm["Chasm<br/>start/stop lifecycle"]
+    Producer["IProducer<br/>MockProducer or EventProducer"]
+    Queue["Channel<IEventBatch><br/>short bounded queue"]
+    Consumer["ChasmConsumer<br/>async queue drain"]
+    Adapter["ChasmDataSource<br/>batch-layout adapter"]
+    Store["DataSource<br/>ROLLING WINDOW MEMORY<br/>_channels[signal][event]<br/>_writeIndex / _count / _windowCapacity"]
+    Snapshots["ChannelWindowSnapshot<br/>MultiChannelWindowSnapshot"]
+    Processors["PlotProcessor<br/>GateProcessor"]
+
+    Chasm -. "starts/stops" .-> Producer
+    Chasm -. "starts/cancels" .-> Consumer
+    Chasm -. "sets streaming / window / clear" .-> Adapter
+    Producer -->|"IEventBatch"| Queue
+    Queue --> Consumer
+    Consumer -->|"Append(batch)"| Adapter
+    Adapter -->|"AppendBatch(...)"| Store
+    Store -->|"GetSnapshot(...)"| Snapshots
+    Snapshots --> Processors
+```
+
+In code terms:
+
+```text
+Chasm           = owns streaming lifecycle
+ChasmConsumer   = drains Channel<IEventBatch>
+ChasmDataSource = translates EventBatch / ColumnMajorEventBatch into DataSource append calls
+DataSource      = owns the fixed-capacity ring buffer and DataVersion
+```
+
 The pipeline has two related streams:
 
 - Parameter events are flattened numeric values shaped by `SignalLayout`. They feed histograms, pseudocolor plots, spectral ribbon plots, and gates.
