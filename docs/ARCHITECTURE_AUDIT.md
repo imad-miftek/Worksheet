@@ -53,13 +53,22 @@ For DAQ event-object batches:
 
 ```text
 IReadOnlyList<Event>
-  -> EventProducer
+  -> IEventIngestionPort.PublishEvents(...)
   -> EventBatchConverter<Event>
   -> ColumnMajorEventBatch
   -> Channel<IEventBatch>
 ```
 
-This is the right boundary. DAQ-specific event objects should be normalized before entering the main CHASM queue. `EventProducer` is the production-shaped push boundary for object batches; `DataSource` should continue to receive known CHASM batch shapes, not arbitrary DAQ SDK objects.
+For DAQ flat-buffer batches:
+
+```text
+double[] columnMajorValues + eventCount
+  -> IEventIngestionPort.PublishColumnMajor(...)
+  -> ColumnMajorEventBatch
+  -> Channel<IEventBatch>
+```
+
+This is the right boundary. DAQ-specific event objects should be normalized before entering the main CHASM queue. `EventProducer` is the production-shaped push boundary for both object batches and already-flat buffers; `DataSource` should continue to receive known CHASM batch shapes, not arbitrary DAQ SDK objects. `PublishColumnMajor(...)` is the no-copy fast path, so callers must treat the published buffer as transferred to CHASM.
 
 ## Correctness Fixes Applied
 
@@ -70,6 +79,7 @@ This is the right boundary. DAQ-specific event objects should be normalized befo
 Evidence:
 
 - `Worksheet.Core/Services/CHASM/Event.cs`
+- `Worksheet.Core/Services/CHASM/IEventIngestionPort.cs`
 - `Worksheet.Core/Services/CHASM/EventProducer.cs`
 - `Worksheet.Core/Services/CHASM/EventBatchConverter.cs`
 - `Worksheet.Tests/EventProducerTests.cs`

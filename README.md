@@ -108,7 +108,8 @@ The raw signal axis is layout-driven in `Worksheet.Core`:
 - Larger event shapes such as `6 lasers x 9 features x 60 channels` map to flat column indices with `SignalLayout.ToIndex(laser, feature, channel)`.
 - `DataSource` still stores signal values column-wise as `signalColumns[signalIndex][eventIndex]`, so selected Laser/Feature/Channel combinations can be read directly.
 - `DataSource.GetSnapshot(...)` returns the fast live ring-buffer view; `DataSource.GetSnapshotCopy(...)` returns a stable contiguous copy for paths that need isolation.
-- `EventProducer.Publish(...)` accepts `IReadOnlyList<Event>` batches and writes normalized `ColumnMajorEventBatch` payloads into CHASM.
+- `IEventIngestionPort` accepts either `IReadOnlyList<Event>` batches or already-flat column-major buffers.
+- `EventProducer.PublishEvents(...)` converts object batches into `ColumnMajorEventBatch`; `EventProducer.PublishColumnMajor(...)` writes flat buffers directly without copying.
 - `EventBatchConverter<TEvent>` converts DAQ-style event object batches into `ColumnMajorEventBatch` payloads for the fast ingestion path.
 
 Default mock acquisition settings come from `Worksheet.Core/Services/CHASM/ChasmOptions.cs`:

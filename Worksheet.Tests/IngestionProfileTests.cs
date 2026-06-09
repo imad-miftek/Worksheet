@@ -291,6 +291,34 @@ public sealed class IngestionProfileTests
 
     [Theory]
     [Trait("Category", "Profile")]
+    [InlineData(1, 1, 51)]
+    [InlineData(1, 1, 60)]
+    [InlineData(6, 9, 50)]
+    [InlineData(6, 9, 60)]
+    public void ProfileEventProducerPublishColumnMajor(int lasers, int features, int channels)
+    {
+        var layout = new SignalLayout(lasers, features, channels);
+        var producer = new EventProducer(
+            layout,
+            channelCapacityBatches: BatchCount,
+            maxBatchSize: BatchSize);
+        var values = CreateFlatColumnMajorBatch(layout.SignalCount, BatchSize, offset: 0);
+
+        producer.Start();
+
+        var elapsed = Measure(() =>
+        {
+            for (int i = 0; i < BatchCount; i++)
+                producer.PublishColumnMajor(values, BatchSize);
+        });
+
+        producer.Stop();
+
+        WriteThroughput($"EventProducer publish flat column-major {lasers}x{features}x{channels}", layout, BatchCount * BatchSize, elapsed);
+    }
+
+    [Theory]
+    [Trait("Category", "Profile")]
     [InlineData("histogram", 1, 1, 51, 1)]
     [InlineData("pseudocolor", 1, 1, 51, 2)]
     [InlineData("spectral", 1, 1, 51, 42)]

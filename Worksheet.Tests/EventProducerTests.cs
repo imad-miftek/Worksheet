@@ -47,6 +47,51 @@ public sealed class EventProducerTests
     }
 
     [Fact]
+    public void PublishEventsIsAvailableThroughIngestionPort()
+    {
+        IEventIngestionPort port = new EventProducer(
+            new SignalLayout(1, 1, 2),
+            channelCapacityBatches: 4,
+            maxBatchSize: 2);
+        var producer = Assert.IsType<EventProducer>(port);
+
+        producer.Start();
+
+        int written = port.PublishEvents([new Event([10, 20])]);
+
+        Assert.Equal(1, written);
+        Assert.True(producer.Reader.TryRead(out var batch));
+        var columnMajor = Assert.IsType<ColumnMajorEventBatch>(batch);
+        Assert.Equal([10, 20], columnMajor.Values);
+    }
+
+    [Fact]
+    public void PublishColumnMajorWritesFlatBatchDirectly()
+    {
+        var producer = new EventProducer(new SignalLayout(1, 1, 2), channelCapacityBatches: 2);
+        var values = new double[] { 10, 11, 20, 21 };
+
+        producer.Start();
+
+        int written = producer.PublishColumnMajor(values, eventCount: 2);
+
+        Assert.Equal(1, written);
+        Assert.True(producer.Reader.TryRead(out var batch));
+        var columnMajor = Assert.IsType<ColumnMajorEventBatch>(batch);
+        Assert.Same(values, columnMajor.Values);
+        Assert.Equal(2, columnMajor.Count);
+    }
+
+    [Fact]
+    public void PublishColumnMajorRejectsWrongFlatBufferLength()
+    {
+        var producer = new EventProducer(new SignalLayout(1, 1, 2), channelCapacityBatches: 2);
+        producer.Start();
+
+        Assert.Throws<ArgumentException>(() => producer.PublishColumnMajor([10, 11, 20], eventCount: 2));
+    }
+
+    [Fact]
     public async Task ChasmCapturesPublishedEventsEndToEnd()
     {
         var layout = new SignalLayout(1, 1, 3);
@@ -63,6 +108,38 @@ public sealed class EventProducerTests
                 new Event([11, 21, 31]),
                 new Event([12, 22, 32]),
             ]);
+
+        await WaitUntilAsync(() => source.TotalEventsIngested == 3);
+        chasm.StopStreaming();
+
+        Assert.Equal(1, written);
+        Assert.Equal(3, source.TotalEventsIngested);
+
+        var snapshot = source.GetSnapshot(layout.ToIndex(0, 0, 1));
+        Assert.Equal(3, snapshot.Count);
+        Assert.Equal(20, snapshot.Values[snapshot.PhysicalIndexForSequence(0)]);
+        Assert.Equal(21, snapshot.Values[snapshot.PhysicalIndexForSequence(1)]);
+        Assert.Equal(22, snapshot.Values[snapshot.PhysicalIndexForSequence(2)]);
+    }
+
+    [Fact]
+    public async Task ChasmCapturesPublishedColumnMajorEventsEndToEnd()
+    {
+        var layout = new SignalLayout(1, 1, 3);
+        var source = new DataSource(layout, windowCapacity: 10);
+        var chasmSource = new ChasmDataSource(source);
+        var producer = new EventProducer(layout, channelCapacityBatches: 4, maxBatchSize: 10);
+        var consumer = new ChasmConsumer(producer.Reader, chasmSource);
+        using var chasm = new Chasm(producer, consumer, chasmSource);
+
+        chasm.StartStreaming();
+        int written = producer.PublishColumnMajor(
+            [
+                10, 11, 12,
+                20, 21, 22,
+                30, 31, 32,
+            ],
+            eventCount: 3);
 
         await WaitUntilAsync(() => source.TotalEventsIngested == 3);
         chasm.StopStreaming();

@@ -5,10 +5,11 @@ using Worksheet.Models;
 
 namespace Worksheet.Services
 {
-    public sealed class EventProducer : IProducer
+    public sealed class EventProducer : IProducer, IEventIngestionPort
     {
         private readonly Channel<IEventBatch> _channel;
         private readonly EventBatchConverter<Event> _converter;
+        private readonly SignalLayout _signalLayout;
         private volatile bool _running;
 
         public EventProducer(
@@ -31,6 +32,8 @@ namespace Worksheet.Services
         {
             if (channelCapacityBatches <= 0)
                 throw new ArgumentOutOfRangeException(nameof(channelCapacityBatches));
+
+            _signalLayout = signalLayout;
 
             var bounded = new BoundedChannelOptions(channelCapacityBatches)
             {
@@ -62,6 +65,11 @@ namespace Worksheet.Services
 
         public int Publish(IReadOnlyList<Event> events)
         {
+            return PublishEvents(events);
+        }
+
+        public int PublishEvents(IReadOnlyList<Event> events)
+        {
             if (events == null)
                 throw new ArgumentNullException(nameof(events));
             if (!_running || events.Count == 0)
@@ -75,6 +83,17 @@ namespace Worksheet.Services
             }
 
             return written;
+        }
+
+        public int PublishColumnMajor(double[] values, int eventCount)
+        {
+            if (values == null)
+                throw new ArgumentNullException(nameof(values));
+            if (!_running || eventCount == 0)
+                return 0;
+
+            var batch = new ColumnMajorEventBatch(eventCount, values, _signalLayout);
+            return _channel.Writer.TryWrite(batch) ? 1 : 0;
         }
     }
 }

@@ -7,7 +7,7 @@ This document explains the event pipeline in practical terms: where events are c
 ```mermaid
 flowchart LR
     Producer["MockProducer<br/>creates event batches"]
-    EventProducer["EventProducer<br/>accepts Event object batches"]
+    EventProducer["EventProducer / IEventIngestionPort<br/>accepts Event objects or flat buffers"]
     EventAdapter["EventBatchConverter&lt;Event&gt;<br/>normalizes DAQ event objects"]
     Channel["Bounded Channel&lt;IEventBatch&gt;<br/>short queue between producer and consumer"]
     Consumer["ChasmConsumer<br/>reads batches asynchronously"]
@@ -18,8 +18,9 @@ flowchart LR
     UI["ViewportSession / WPF UI<br/>starts streaming and coordinates updates"]
 
     UI -->|"start / stop streaming"| Producer
-    EventProducer -->|"Publish(IReadOnlyList<Event>)"| EventAdapter
+    EventProducer -->|"PublishEvents(IReadOnlyList<Event>)"| EventAdapter
     EventAdapter -->|"ColumnMajorEventBatch"| Channel
+    EventProducer -->|"PublishColumnMajor(double[], count)"| Channel
     Producer -->|"TryWrite(batch)"| Channel
     Channel -->|"ReadAllAsync"| Consumer
     Consumer -->|"Append(batch)"| Adapter
@@ -466,8 +467,17 @@ If a DAQ API provides batches of event objects, CHASM should not make `DataSourc
 
 ```text
 IReadOnlyList<Event>
-    -> EventProducer.Publish(...)
+    -> IEventIngestionPort.PublishEvents(...)
     -> EventBatchConverter<Event>
+    -> ColumnMajorEventBatch
+    -> Channel<IEventBatch>
+```
+
+If the DAQ can already provide a flat column-major payload, use the faster direct path:
+
+```text
+double[] values + eventCount
+    -> IEventIngestionPort.PublishColumnMajor(...)
     -> ColumnMajorEventBatch
     -> Channel<IEventBatch>
 ```
@@ -480,7 +490,9 @@ values[signalIndex * eventCount + eventIndex]
 
 For `Event` objects, the converter validates that each event has the expected `SignalLayout.SignalCount` before writing the output batch. Large conversions use a parallel signal-first path, while small conversions stay single-threaded to avoid scheduling overhead.
 
-`EventProducer` is intentionally a push boundary. It does not synthesize data like `MockProducer`; a DAQ callback or SDK adapter can call `Publish(...)` with the event batch it received. If the real DAQ can provide flat column-major buffers directly, it can bypass `EventProducer` and write `ColumnMajorEventBatch` payloads into CHASM instead.
+`EventProducer` is intentionally a push boundary. It does not synthesize data like `MockProducer`; a DAQ callback or SDK adapter can call `PublishEvents(...)` with object batches or `PublishColumnMajor(...)` with flat buffers. The direct flat path avoids object conversion when the real DAQ can provide CHASM's preferred memory layout.
+
+`PublishColumnMajor(...)` is a no-copy path. The caller should treat the published `double[]` as transferred to CHASM and must not mutate or reuse it while the batch may still be queued or consumed.
 
 ## Why The Flat Path Is Faster
 
