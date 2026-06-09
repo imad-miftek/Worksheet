@@ -88,43 +88,97 @@ The `Load Histogram Config` toolbar action currently builds a preset layout with
 
 ## Data and Rendering Pipeline
 
-The current architecture is built around a bounded rolling raw-event window:
+The detailed review document is `docs/INGESTION_PROCESSING_RENDERING_PIPELINE.md`.
 
-1. An ingress source emits event batches into the `CHASM` pipeline. Today that can be `MockProducer` or the push-style `EventProducer`.
-2. `ViewportSession` coordinates ingestion, processing, rendering, and gate evaluation.
-3. `DataSource` and related viewport services retain a fixed-capacity logical event window.
-4. `ProcessingEngine` produces plot-ready data when retained data changes.
-5. `RenderingEngine` pushes updated data into the registered ScottPlot views.
+At a high level, Worksheet uses this path:
 
-`ChasmPipelineFactory` is the acquisition swap point:
+```mermaid
+flowchart LR
+    Source["DAQ adapter or MockProducer"]
+    EventProducer["EventProducer / IEventIngestionPort"]
+    Converter["EventBatchConverter"]
+    Queue["Channel<IEventBatch>"]
+    Consumer["ChasmConsumer"]
+    ChasmSource["ChasmDataSource"]
+    RawStore["DataSource<br/>rolling raw-event window"]
+    Processing["ProcessingEngine<br/>PlotProcessor / GateProcessor"]
+    DataStore["DataStore<br/>latest processed data"]
+    Rendering["RenderingEngine"]
+    Views["PlotViews"]
+    Screen["WPF screen"]
 
-- `CreateMock(...)` wires the current mock acquisition path.
-- `CreateEventIngress(...)` wires the production-style push path and returns an `IEventIngestionPort` for a DAQ adapter to call.
-- `CreateMock(...)` and `CreateEventIngress(...)` can receive an `IAnalogCaptureSink`, which lets waveform captures feed a separate oscilloscope stream without storing waveforms in `DataSource`.
+    Source -->|"Event objects"| EventProducer
+    Source -->|"flat column-major buffers"| EventProducer
+    EventProducer -->|"Event.Parameters"| Converter
+    Converter -->|"ColumnMajorEventBatch"| Queue
+    EventProducer -->|"PublishColumnMajor"| Queue
+    Queue --> Consumer
+    Consumer --> ChasmSource
+    ChasmSource --> RawStore
+    RawStore --> Processing
+    Processing --> DataStore
+    DataStore --> Rendering
+    Rendering --> Views
+    Views --> Screen
+```
+
+The pipeline has two related streams:
+
+- Parameter events are flattened numeric values shaped by `SignalLayout`. They feed histograms, pseudocolor plots, spectral ribbon plots, and gates.
+- Analog captures are waveform samples shaped as `[channel, timestamp]`. They feed oscilloscope plots through `OscilloscopeBuffer` and are not stored in the retained event window.
+
+```mermaid
+flowchart TB
+    Event["Event from DAQ"]
+    Parameters["Event.Parameters<br/>flattened L/F/C values"]
+    Capture["Event.AnalogCapture<br/>channel x timestamp waveforms"]
+    Retained["DataSource<br/>bounded retained parameter window"]
+    ScopeBuffer["OscilloscopeBuffer<br/>bounded latest-capture queue"]
+    ParameterPlots["Histogram / Pseudocolor<br/>Spectral ribbon / Gates"]
+    ScopePlot["Oscilloscope plot"]
+
+    Event --> Parameters
+    Event --> Capture
+    Parameters --> Retained
+    Retained --> ParameterPlots
+    Capture --> ScopeBuffer
+    ScopeBuffer --> ScopePlot
+```
+
+Rendering is split between ScottPlot's static plot frame and app-owned dynamic data layers:
+
+```mermaid
+flowchart LR
+    Processed["ProcessedPlotData"]
+    RenderEngine["RenderingEngine<br/>UI-thread render pass"]
+    PlotView["PlotView.Render(...)"]
+    ScottPlot["ScottPlot<br/>axes, labels, borders"]
+    Bitmap["DynamicBitmap<br/>WriteableBitmap.WritePixels"]
+    Signal["ScottPlot Signal<br/>oscilloscope waveforms"]
+
+    Processed --> RenderEngine
+    RenderEngine --> PlotView
+    PlotView -->|"histogram / pseudocolor / spectral"| Bitmap
+    PlotView -->|"oscilloscope"| Signal
+    PlotView --> ScottPlot
+    Bitmap --> ScottPlot
+    Signal --> ScottPlot
+```
 
 Important semantics:
 
-- Memory usage is bounded by the configured window capacity.
-- Oldest events are overwritten when the rolling window is full.
-- Gate event indices are relative to the current logical window, not absolute history.
-
-The raw signal axis is layout-driven in `Worksheet.Core`:
-
-- `SignalLayout.Default` preserves the current `1 laser x 1 feature x 51 connected channels` shape.
-- Larger event shapes such as `6 lasers x 9 features x 60 channels` map to flat column indices with `SignalLayout.ToIndex(laser, feature, channel)`.
-- `DataSource` still stores signal values column-wise as `signalColumns[signalIndex][eventIndex]`, so selected Laser/Feature/Channel combinations can be read directly.
-- `DataSource.GetSnapshot(...)` returns the fast live ring-buffer view; `DataSource.GetSnapshotCopy(...)` returns a stable contiguous copy for paths that need isolation.
-- `IEventIngestionPort` accepts either `IReadOnlyList<Event>` batches or already-flat column-major buffers.
-- `Event.Parameters` is the flattened `[laser, feature, channel]` parameter vector used by plots.
-- `Event.AnalogCapture` is the required waveform source shaped as `[channel, timestamp]`; it is not stored in `DataSource`.
-- `EventProducer.PublishEvents(...)` converts object batches into `ColumnMajorEventBatch`; `EventProducer.PublishColumnMajor(...)` writes flat buffers directly without copying.
-- `MockProducer` publishes synthetic analog captures when an oscilloscope sink is attached, so the development oscilloscope path exercises the same stream boundary.
-- `OscilloscopeBuffer` is a bounded transient latest-capture buffer for waveform plots. It drops older captures when the oscilloscope cannot keep up.
-- `OscilloscopePlotProcessor` drains the newest capture and extracts the selected analog channels into `OscilloscopeProcessedData`.
-- Oscilloscope channel selection is stored in `PlotSettings.OscilloscopeChannelIndices` and can include multiple analog channels.
-- Oscilloscope processing keys off `OscilloscopeBuffer.Version`, not CHASM `DataVersion`, because waveform captures live outside the retained event window.
-- Oscilloscope plots run on a separate about-30 Hz processing/render cadence while parameter plots keep the slower rolling-window processing cadence.
-- `EventBatchConverter` converts `Event` object batches into `ColumnMajorEventBatch` payloads for the fast ingestion path.
+- `ChasmPipelineFactory.CreateMock(...)` wires simulated acquisition.
+- `ChasmPipelineFactory.CreateEventIngress(...)` wires a push-style DAQ boundary and returns an `IEventIngestionPort`.
+- `IEventIngestionPort.PublishEvents(...)` accepts object batches and converts `Event.Parameters` into `ColumnMajorEventBatch`.
+- `IEventIngestionPort.PublishColumnMajor(...)` accepts already-flat column-major buffers for the fastest no-copy path.
+- `Event.AnalogCapture` is routed to `IAnalogCaptureSink` / `OscilloscopeBuffer`, separate from parameter-event storage.
+- `DataSource` stores retained parameter values column-wise as `_channels[signalIndex][eventIndex]` in a fixed-capacity ring buffer.
+- `SignalLayout.ToIndex(laser, feature, channel)` maps selected Laser/Feature/Channel coordinates to one retained signal column.
+- `ProcessingEngine` only recomputes plots when settings, render target size, or data version changes.
+- `RenderingEngine` coalesces changed processed data and renders on the WPF UI thread.
+- Histogram, pseudocolor, and spectral ribbon plots use a bitmap data layer aligned to the ScottPlot data rectangle.
+- `DynamicBitmap.PresentBitmap(...)` blits BGRA pixel buffers into a `WriteableBitmap` with `WritePixels(...)`.
+- Oscilloscope plots draw selected waveform channels as ScottPlot signal plottables instead of using the bitmap blit path.
 
 Default mock acquisition settings come from `Worksheet.Core/Services/CHASM/ChasmOptions.cs`:
 
@@ -147,8 +201,9 @@ Log directory resolution order:
 
 Useful project documents:
 
+- `docs/INGESTION_PROCESSING_RENDERING_PIPELINE.md`: end-to-end explanation from CHASM ingestion through plot processing, rendering, and bitmap blitting
 - `docs/CHASM_PIPELINE.md`: acquisition and rolling-window semantics
-- `docs/PLOT_PIPELINE_REGISTRY_PLAN.md`: planned plot-pipeline registry refactor for per-plot data sources and cadences
+- `docs/PLOT_PIPELINE_REGISTRY_PLAN.md`: plot-pipeline registry notes for per-plot data sources and cadences
 - `docs/PLOT_PIPELINE_AUDIT.md`: current processing/rendering behavior and bottlenecks
 - `docs/UI_VISUALIZATION_RESEARCH.md`: background research on low-latency multi-plot visualization
 - `docs/CODING_STANDARDS.md`: local coding conventions
