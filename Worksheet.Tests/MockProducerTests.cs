@@ -57,9 +57,35 @@ public sealed class MockProducerTests
         Assert.True(buffer.Version > 0);
         Assert.True(buffer.TryGetLatest(out var capture));
         Assert.NotNull(capture);
-        Assert.Equal(4, capture.ChannelCount);
+        Assert.Equal(options.SignalLayout.ChannelCount, capture.ChannelCount);
         Assert.Equal(1750, capture.TimestampCount);
         Assert.Equal(capture.ChannelCount * capture.TimestampCount, capture.Values.Length);
+    }
+
+    [Fact]
+    public async Task MockProducerPublishesAnalogCapturesForAllConfiguredChannels()
+    {
+        var options = ChasmOptions.Default with
+        {
+            AcquisitionInterval = TimeSpan.FromMilliseconds(1),
+            BatchSize = 4,
+            ChannelCapacityBatches = 2,
+            SignalLayout = new SignalLayout(1, 1, 51)
+        };
+        var buffer = new OscilloscopeBuffer();
+
+        using var producer = new MockProducer(options, buffer);
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+
+        producer.Start();
+        await producer.Reader.ReadAsync(timeout.Token);
+        producer.Stop();
+
+        Assert.True(buffer.TryGetLatest(out var capture));
+        Assert.NotNull(capture);
+        Assert.Equal(51, capture.ChannelCount);
+        Assert.Equal(1750, capture.TimestampCount);
+        Assert.Contains(capture.Values.Skip(50 * capture.TimestampCount).Take(capture.TimestampCount), value => value > 0.1);
     }
 
     [Fact]

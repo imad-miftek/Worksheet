@@ -9,7 +9,6 @@ namespace Worksheet.Services
     {
         private const int PopulationCount = 4;
         private const double MaxValue = 100_000_000d;
-        private const int MockAnalogChannelCount = 4;
         private const int MockAnalogTimestampCount = 1750;
         private const int MaxThroughputBurstBatches = 16;
         private static readonly TimeSpan StopWaitTimeout = TimeSpan.FromMilliseconds(250);
@@ -19,6 +18,7 @@ namespace Worksheet.Services
         private readonly Channel<IEventBatch> _channel;
         private readonly IAnalogCaptureSink? _analogCaptureSink;
         private readonly int _signalCount;
+        private readonly int _analogChannelCount;
 
         private CancellationTokenSource? _cts;
         private Task? _task;
@@ -35,6 +35,7 @@ namespace Worksheet.Services
             _options = options ?? ChasmOptions.Default;
             _analogCaptureSink = analogCaptureSink;
             _signalCount = _options.SignalLayout.SignalCount;
+            _analogChannelCount = _options.SignalLayout.ChannelCount;
             _logMeans = new double[_signalCount, PopulationCount];
             _logSigmas = new double[_signalCount, PopulationCount];
 
@@ -252,15 +253,17 @@ namespace Worksheet.Services
 
         private AnalogCapture GenerateAnalogCapture()
         {
-            var values = new double[MockAnalogChannelCount * MockAnalogTimestampCount];
+            var values = new double[_analogChannelCount * MockAnalogTimestampCount];
             int sequence = _analogCaptureSequence++;
 
-            for (int channel = 0; channel < MockAnalogChannelCount; channel++)
+            for (int channel = 0; channel < _analogChannelCount; channel++)
             {
-                double baseAmplitude = 0.38 - channel * 0.055;
+                int lane = channel % 8;
+                int bank = channel / 8;
+                double baseAmplitude = 0.22 + 0.18 * ((lane % 4) / 3.0);
                 double amplitude = baseAmplitude * (1.0 + 0.14 * StableNoise(channel + 17, sequence));
-                double center = 360 + channel * 135 + 6.0 * StableNoise(channel + 29, sequence);
-                double width = (22 + channel * 4) * (1.0 + 0.12 * StableNoise(channel + 41, sequence));
+                double center = 260 + lane * 170 + (bank % 3) * 36 + 6.0 * StableNoise(channel + 29, sequence);
+                double width = (20 + (lane % 5) * 5) * (1.0 + 0.12 * StableNoise(channel + 41, sequence));
                 double undershootCenter = center + 62;
                 double recoveryCenter = center + 150;
                 double baselineOffset = 0.006 * StableNoise(channel + 53, sequence);
@@ -278,7 +281,7 @@ namespace Worksheet.Services
                 }
             }
 
-            return new AnalogCapture(values, MockAnalogChannelCount, MockAnalogTimestampCount);
+            return new AnalogCapture(values, _analogChannelCount, MockAnalogTimestampCount);
         }
 
         private static double Gaussian(double x, double center, double sigma)
