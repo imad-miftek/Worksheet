@@ -193,9 +193,11 @@ namespace Worksheet.Services
                 HistogramAverageComputeMs: compute.HistogramAverageMs,
                 PseudocolorAverageComputeMs: compute.PseudocolorAverageMs,
                 SpectralRibbonAverageComputeMs: compute.SpectralRibbonAverageMs,
+                OscilloscopeAverageComputeMs: compute.OscilloscopeAverageMs,
                 HistogramAverageRenderMs: render.HistogramAverageMs,
                 PseudocolorAverageRenderMs: render.PseudocolorAverageMs,
                 SpectralRibbonAverageRenderMs: render.SpectralRibbonAverageMs,
+                OscilloscopeAverageRenderMs: render.OscilloscopeAverageMs,
                 DeltaAppliedCount: incremental.DeltaAppliedCount,
                 FullRebuildCount: incremental.FullRebuildCount,
                 SequenceGapCount: incremental.SequenceGapCount);

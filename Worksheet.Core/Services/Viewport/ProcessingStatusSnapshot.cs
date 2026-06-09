@@ -6,9 +6,11 @@ namespace Worksheet.Services
         double HistogramAverageComputeMs,
         double PseudocolorAverageComputeMs,
         double SpectralRibbonAverageComputeMs,
+        double OscilloscopeAverageComputeMs,
         double HistogramAverageRenderMs,
         double PseudocolorAverageRenderMs,
         double SpectralRibbonAverageRenderMs,
+        double OscilloscopeAverageRenderMs,
         long DeltaAppliedCount,
         long FullRebuildCount,
         long SequenceGapCount);

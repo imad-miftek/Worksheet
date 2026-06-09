@@ -29,6 +29,8 @@ namespace Worksheet.Services
         private long _pcComputeCount;
         private double _srComputeTotalMs;
         private long _srComputeCount;
+        private double _scopeComputeTotalMs;
+        private long _scopeComputeCount;
 
         public ProcessingEngine(
             DataStore dataStore,
@@ -226,7 +228,8 @@ namespace Worksheet.Services
                 return new PlotTimingSnapshot(
                     HistogramAverageMs: ComputeAverage(_histComputeTotalMs, _histComputeCount),
                     PseudocolorAverageMs: ComputeAverage(_pcComputeTotalMs, _pcComputeCount),
-                    SpectralRibbonAverageMs: ComputeAverage(_srComputeTotalMs, _srComputeCount));
+                    SpectralRibbonAverageMs: ComputeAverage(_srComputeTotalMs, _srComputeCount),
+                    OscilloscopeAverageMs: ComputeAverage(_scopeComputeTotalMs, _scopeComputeCount));
             }
         }
 
@@ -246,6 +249,8 @@ namespace Worksheet.Services
                 _pcComputeCount = 0;
                 _srComputeTotalMs = 0;
                 _srComputeCount = 0;
+                _scopeComputeTotalMs = 0;
+                _scopeComputeCount = 0;
             }
 
             _pipelines.ResetStates();
@@ -282,6 +287,10 @@ namespace Worksheet.Services
                     case PlotType.SpectralRibbon:
                         _srComputeTotalMs += elapsedMs;
                         _srComputeCount++;
+                        break;
+                    case PlotType.Oscilloscope:
+                        _scopeComputeTotalMs += elapsedMs;
+                        _scopeComputeCount++;
                         break;
                 }
             }

@@ -94,9 +94,11 @@ namespace Worksheet.Views
             HistogramComputeValueText.Text = FormatMilliseconds(status.HistogramAverageComputeMs);
             PseudocolorComputeValueText.Text = FormatMilliseconds(status.PseudocolorAverageComputeMs);
             SpectralComputeValueText.Text = FormatMilliseconds(status.SpectralRibbonAverageComputeMs);
+            OscilloscopeComputeValueText.Text = FormatMilliseconds(status.OscilloscopeAverageComputeMs);
             HistogramRenderValueText.Text = FormatMilliseconds(status.HistogramAverageRenderMs);
             PseudocolorRenderValueText.Text = FormatMilliseconds(status.PseudocolorAverageRenderMs);
             SpectralRenderValueText.Text = FormatMilliseconds(status.SpectralRibbonAverageRenderMs);
+            OscilloscopeRenderValueText.Text = FormatMilliseconds(status.OscilloscopeAverageRenderMs);
         }
 
         private static string FormatMilliseconds(double value)
