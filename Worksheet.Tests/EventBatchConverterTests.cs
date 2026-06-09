@@ -5,7 +5,7 @@ using Xunit;
 
 namespace Worksheet.Tests;
 
-public sealed class EventObjectBatchConverterTests
+public sealed class EventBatchConverterTests
 {
     [Fact]
     public void ConvertSkipsEmptyEventBatches()
@@ -92,6 +92,17 @@ public sealed class EventObjectBatchConverterTests
     }
 
     [Fact]
+    public void ConvertRejectsSignalEventsThatDoNotMatchLayout()
+    {
+        var layout = new SignalLayout(1, 1, 3);
+        var converter = new EventBatchConverter<SignalEvent>(layout);
+
+        var ex = Assert.Throws<ArgumentException>(() => converter.Convert([new SignalEvent([10, 20])]));
+
+        Assert.Contains("expected 3", ex.Message);
+    }
+
+    [Fact]
     public void TryWriteToWritesConvertedBatchesToChasmChannel()
     {
         var converter = CreateConverter(signalCount: 2, maxBatchSize: 2);
@@ -115,13 +126,13 @@ public sealed class EventObjectBatchConverterTests
         Assert.Equal([12, 22], second.Values);
     }
 
-    private static EventObjectBatchConverter<TestEvent> CreateConverter(
+    private static EventBatchConverter<TestEvent> CreateConverter(
         int signalCount,
         int maxBatchSize = 1000,
-        int parallelCellThreshold = EventObjectBatchConverter<TestEvent>.DefaultParallelCellThreshold)
+        int parallelCellThreshold = EventBatchConverter<TestEvent>.DefaultParallelCellThreshold)
     {
         var layout = new SignalLayout(1, 1, signalCount);
-        return new EventObjectBatchConverter<TestEvent>(
+        return new EventBatchConverter<TestEvent>(
             layout,
             static (ev, signalIndex) => ev.Values[signalIndex],
             maxBatchSize,

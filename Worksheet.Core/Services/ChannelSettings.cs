@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
-using System.Text.RegularExpressions;
 using Worksheet.Models;
 
 namespace Worksheet.Services
@@ -14,7 +13,9 @@ namespace Worksheet.Services
 
         public List<ChannelInfo> Channels { get; private set; } = new List<ChannelInfo>();
         public List<ChannelInfo> AllChannels { get; private set; } = new List<ChannelInfo>();
-        public int ChannelCount => AllChannels.Count;
+        public int SourceChannelCount => AllChannels.Count;
+        public int ConnectedChannelCount => Channels.Count;
+        public int ChannelCount => ConnectedChannelCount;
 
         public bool LoadFromJsonFile(string jsonFilePath)
         {
@@ -132,36 +133,6 @@ namespace Worksheet.Services
             catch
             {
                 return false;
-            }
-        }
-
-        private class NaturalChannelComparer : IComparer<string>
-        {
-            public int Compare(string? x, string? y)
-            {
-                x ??= string.Empty;
-                y ??= string.Empty;
-
-                var xParts = GetSortKey(x);
-                var yParts = GetSortKey(y);
-
-                int prefixCompare = string.Compare(xParts.prefix, yParts.prefix, StringComparison.Ordinal);
-                if (prefixCompare != 0)
-                    return prefixCompare;
-
-                return xParts.number.CompareTo(yParts.number);
-            }
-
-            private (string prefix, int number) GetSortKey(string text)
-            {
-                var match = Regex.Match(text, @"\.(\d+)$");
-                if (match.Success)
-                {
-                    var prefix = text.Substring(0, match.Index);
-                    var number = int.Parse(match.Groups[1].Value);
-                    return (prefix, number);
-                }
-                return (text, 0);
             }
         }
     }

@@ -169,6 +169,33 @@ public sealed class DataSourceTests
     }
 
     [Fact]
+    public void SnapshotRejectsOutOfRangeSequenceAccess()
+    {
+        var source = new DataSource(windowCapacity: 3);
+        var batch = CreateBatch(count: 3);
+        source.AppendBatch(batch, count: 3);
+
+        var snapshot = source.GetSnapshot(0);
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => snapshot.PhysicalIndexForSequence(-1));
+        Assert.Throws<ArgumentOutOfRangeException>(() => snapshot.PhysicalIndexForSequence(3));
+    }
+
+    [Fact]
+    public void MultiChannelSnapshotRejectsOutOfRangeChannelAndSequenceAccess()
+    {
+        var source = new DataSource(windowCapacity: 3);
+        var batch = CreateBatch(count: 3);
+        source.AppendBatch(batch, count: 3);
+
+        var snapshot = source.GetSnapshot(0, 1);
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => snapshot.ValueAt(2, 0));
+        Assert.Throws<ArgumentOutOfRangeException>(() => snapshot.Channel(2));
+        Assert.Throws<ArgumentOutOfRangeException>(() => snapshot.PhysicalIndexForSequence(3));
+    }
+
+    [Fact]
     public void EventBatchAcceptsCustomSignalLayout()
     {
         var layout = new SignalLayout(6, 9, 60);

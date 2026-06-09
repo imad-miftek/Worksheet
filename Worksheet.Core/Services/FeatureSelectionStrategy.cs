@@ -29,7 +29,7 @@ namespace Worksheet.Services
             {
                 lock (_lock)
                 {
-                    if (_channelSettings == null || _channelSettings.ChannelCount == 0)
+                    if (_channelSettings == null || _channelSettings.ConnectedChannelCount == 0)
                         return Array.Empty<string>();
 
                     return _channelSettings.GetAdcChannelsFiltered();
@@ -46,7 +46,7 @@ namespace Worksheet.Services
             {
                 lock (_lock)
                 {
-                    if (_channelSettings == null || _channelSettings.ChannelCount == 0)
+                    if (_channelSettings == null || _channelSettings.ConnectedChannelCount == 0)
                         return Array.Empty<string>();
 
                     return _channelSettings.GetAdcChannels();
@@ -60,7 +60,7 @@ namespace Worksheet.Services
             {
                 lock (_lock)
                 {
-                    if (_channelSettings == null || _channelSettings.ChannelCount == 0)
+                    if (_channelSettings == null || _channelSettings.ConnectedChannelCount == 0)
                         return Array.Empty<int>();
 
                     return _channelSettings.GetAdcIndicesFiltered();
@@ -72,7 +72,7 @@ namespace Worksheet.Services
         {
             lock (_lock)
             {
-                if (_channelSettings == null || _channelSettings.ChannelCount == 0)
+                if (_channelSettings == null || _channelSettings.ConnectedChannelCount == 0)
                 {
                     wavelength = string.Empty;
                     return false;
@@ -109,7 +109,7 @@ namespace Worksheet.Services
             {
                 lock (_lock)
                 {
-                    if (_channelSettings == null || _channelSettings.ChannelCount == 0)
+                    if (_channelSettings == null || _channelSettings.ConnectedChannelCount == 0)
                         return Array.Empty<int>();
 
                     return _channelSettings.GetAdcIndices();

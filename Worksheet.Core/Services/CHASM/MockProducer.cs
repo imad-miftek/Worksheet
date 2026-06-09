@@ -10,6 +10,7 @@ namespace Worksheet.Services
         private const int PopulationCount = 4;
         private const double MaxValue = 100_000_000d;
         private const int MaxThroughputBurstBatches = 16;
+        private static readonly TimeSpan StopWaitTimeout = TimeSpan.FromMilliseconds(250);
         private static readonly TimeSpan MaxThroughputRestInterval = TimeSpan.FromMilliseconds(1);
 
         private readonly ChasmOptions _options;
@@ -66,6 +67,11 @@ namespace Worksheet.Services
 
             // Prevent stale batches from being consumed after restart.
             while (_channel.Reader.TryRead(out _)) { }
+
+            ObserveStoppedTask(_task, "MockProducer.Stop");
+            _cts?.Dispose();
+            _cts = null;
+            _task = null;
         }
 
         public void Dispose() => Stop();
@@ -76,6 +82,32 @@ namespace Worksheet.Services
                 await RunMaxThroughputAsync(token).ConfigureAwait(false);
             else
                 await RunFixedRateAsync(token).ConfigureAwait(false);
+        }
+
+        private static void ObserveStoppedTask(Task? task, string context)
+        {
+            if (task == null)
+                return;
+
+            try
+            {
+                if (!task.Wait(StopWaitTimeout))
+                    AppLog.Error($"{context} timed out", $"timeoutMs={StopWaitTimeout.TotalMilliseconds:F0}");
+            }
+            catch (AggregateException ex) when (IsCancellationOnly(ex))
+            {
+            }
+        }
+
+        private static bool IsCancellationOnly(AggregateException ex)
+        {
+            foreach (var inner in ex.Flatten().InnerExceptions)
+            {
+                if (inner is not OperationCanceledException)
+                    return false;
+            }
+
+            return true;
         }
 
         private async Task RunFixedRateAsync(CancellationToken token)

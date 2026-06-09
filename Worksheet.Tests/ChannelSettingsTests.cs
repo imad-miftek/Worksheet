@@ -28,6 +28,10 @@ public sealed class ChannelSettingsTests
             var settings = new ChannelSettings();
             Assert.True(settings.LoadFromJsonFile(path));
 
+            Assert.Equal(6, settings.SourceChannelCount);
+            Assert.Equal(4, settings.ConnectedChannelCount);
+            Assert.Equal(settings.ConnectedChannelCount, settings.ChannelCount);
+
             Assert.Collection(
                 settings.Channels,
                 c =>

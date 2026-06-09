@@ -70,6 +70,7 @@ namespace Worksheet.Services
         public void Dispose()
         {
             Stop();
+            _chasm.Dispose();
             _processingEngine.Dispose();
             _renderingEngine.Dispose();
         }

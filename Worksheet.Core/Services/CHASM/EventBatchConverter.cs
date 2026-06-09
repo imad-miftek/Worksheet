@@ -6,14 +6,14 @@ using Worksheet.Models;
 
 namespace Worksheet.Services
 {
-    public sealed class EventObjectBatchConverter<TEvent>
+    public sealed class EventBatchConverter<TEvent>
     {
         public const int DefaultParallelCellThreshold = 250_000;
 
         private readonly SignalLayout _signalLayout;
         private readonly Func<TEvent, int, double> _readSignalValue;
 
-        public EventObjectBatchConverter(
+        public EventBatchConverter(
             SignalLayout signalLayout,
             int maxBatchSize = 1000,
             int parallelCellThreshold = DefaultParallelCellThreshold)
@@ -31,7 +31,7 @@ namespace Worksheet.Services
         {
         }
 
-        public EventObjectBatchConverter(
+        public EventBatchConverter(
             SignalLayout signalLayout,
             Func<TEvent, int, double> readSignalValue,
             int maxBatchSize = 1000,
@@ -92,6 +92,8 @@ namespace Worksheet.Services
 
         private ColumnMajorEventBatch ConvertChunk(IReadOnlyList<TEvent> events, int offset, int count)
         {
+            ValidateEventShape(events, offset, count);
+
             var values = new double[checked(_signalLayout.SignalCount * count)];
             int cellCount = values.Length;
 
@@ -101,6 +103,20 @@ namespace Worksheet.Services
                 FillColumnMajor(events, offset, count, values);
 
             return new ColumnMajorEventBatch(count, values, _signalLayout);
+        }
+
+        private void ValidateEventShape(IReadOnlyList<TEvent> events, int offset, int count)
+        {
+            for (int e = 0; e < count; e++)
+            {
+                if (events[offset + e] is IEventSignalValues signalValues &&
+                    signalValues.SignalCount != _signalLayout.SignalCount)
+                {
+                    throw new ArgumentException(
+                        $"Event at index {offset + e} has {signalValues.SignalCount} signals, expected {_signalLayout.SignalCount}.",
+                        nameof(events));
+                }
+            }
         }
 
         private void FillColumnMajor(IReadOnlyList<TEvent> events, int offset, int count, double[] values)

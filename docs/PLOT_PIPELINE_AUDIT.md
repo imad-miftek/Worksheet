@@ -8,177 +8,137 @@ This audit covers the current processing/rendering path for:
 
 ## Current Pipeline
 
-1. `ProcessingEngine.Tick()` recomputes processed data when `DataVersion` changes.
+1. `ProcessingEngine.Tick()` invokes plot processing when plot settings, target size, or `DataVersion` changes.
 2. `DataStore` holds the latest `ProcessedPlotData` per plot.
 3. `RenderingEngine.Tick()` compares object reference and renders when data changed.
-4. Plot views assign data to plottables and call `plot.Refresh()`.
+4. Pseudocolor and spectral ribbon views present precomputed pixel buffers through `DynamicBitmap`.
+5. ScottPlot still owns axes, labels, ticks, borders, gate overlays, and static plot chrome.
 
 ## Findings (by impact)
 
-### 1) Full recompute per data version (high)
+### 1) DataSource snapshots are live ring-buffer views (high)
 
-Every data version change triggers full plot recompute for each active plot.
+`DataSource.GetSnapshot(...)` returns references to the internal retained channel arrays. The metadata is captured under lock, but the arrays remain live after the lock is released.
 
-- `Services/Viewport/ProcessingEngine.cs`
-  - fingerprints include `DataVersion`
-  - recomputes each plot when version changes
-
-Impact:
-
-- Work scales with retained window size and number of plots.
-- No incremental/delta processing yet.
-
-### 2) Spectral compute lock contention on snapshots (high)
-
-`SpectralRibbon` fetches channel snapshots inside `Parallel.For`, and snapshot fetch is lock-based.
-
-- `Services/Viewport/PlotProcessor.cs`
-  - `Parallel.For(... channelCount ...)`
-  - `_buffer.GetSnapshot(...)` inside parallel body
-- `Services/Viewport/DataSource.cs`
-  - `GetSnapshot()` uses lock
+- `Worksheet.Core/Services/Viewport/DataSource.cs`
+- `Worksheet.Core/Services/Viewport/ChannelWindowSnapshot.cs`
+- `Worksheet.Core/Services/Viewport/MultiChannelWindowSnapshot.cs`
 
 Impact:
 
-- Parallel workers contend on one lock, reducing effective parallelism.
+- Fast and allocation-free snapshots.
+- Processing can observe partially newer values if ingestion writes while a processor is scanning a snapshot.
+- This is a deliberate performance tradeoff, but it should be treated as a weak snapshot contract.
 
-### 3) Pseudocolor transient allocation pressure (high)
+### 2) Processing is incremental, but still scheduled per data version (medium)
 
-`Pseudocolor` allocates large temporary structures each processing pass:
+`ProcessingEngine` still checks every active plot when `DataVersion` changes, but `PlotProcessor` maintains per-plot incremental state:
 
-- thread-local `int[bins,bins]`
-- `double[bins*bins]` flat merge buffer
-- `double[bins,bins]` output array
+- histogram ring-bin state
+- pseudocolor packed-bin state
+- spectral ribbon row state
+
+Files:
+
+- `Worksheet.Core/Services/Viewport/ProcessingEngine.cs`
+- `Worksheet.Core/Services/Viewport/PlotProcessor.cs`
+
+Impact:
+
+- The scheduling cost still scales with active plot count.
+- The compute cost is usually delta-based instead of full-window-based.
+- Sequence gaps or settings changes still force full rebuilds.
+
+### 3) Pseudocolor and spectral buffers are retained in processor state (medium)
+
+The old design allocated more transient heatmap state. Current `PlotProcessor` keeps reusable state objects:
+
+- `RawCounts`
+- `Normalized`
+- `PixelBuffer`
+- event-contribution rings
 
 File:
 
-- `Services/Viewport/PlotProcessor.cs`
+- `Worksheet.Core/Services/Viewport/PlotProcessor.cs`
 
 Impact:
 
-- GC/memory bandwidth overhead.
-- Processing cost increases with bins and core count.
+- Better allocation behavior than the older heatmap path.
+- Work still scales with bin count, pixel size, and selected channel count.
+- Large target sizes increase pixel-buffer render-preparation cost.
 
-### 4) Synchronous UI invocation per render target (high)
+### 4) Rendering dispatch is coalesced asynchronously (medium)
 
-Rendering dispatch is synchronous (`Dispatcher.Invoke`) for each target in the loop.
+`RenderingEngine` queues pending renders and schedules a single UI-thread render pass through `Dispatcher.BeginInvoke`.
 
-- `Services/Viewport/RenderingEngine.cs`
-
-Impact:
-
-- Background engine blocks waiting for UI thread for each plot.
-- Under multiple plots, frame scheduling and throughput degrade.
-
-### 5) Forced refresh every render call (medium)
-
-`RenderOnce()` always executes `plot.Refresh()` after updating plottables.
-
-- `Views/PlotViews/PlotView.cs`
+- `Worksheet.App/Services/Viewport/RenderingEngine.cs`
 
 Impact:
 
-- Aggressive redraw behavior can over-render under bursty updates.
+- Better than per-target synchronous dispatch.
+- Rendering still runs on the UI thread.
+- Large numbers of plots can still saturate the UI thread.
 
-### 6) Gate recompute is full-rescan per data version (medium)
+### 5) Static ScottPlot refresh still happens for axis/config changes (low)
 
-Gate processing also keys on `DataVersion`, so gates rescan window each change.
+Pseudocolor and spectral data pixels are presented through `DynamicBitmap`, but static axis/tick/label changes still call `plot.Refresh()`.
 
-- `Services/Viewport/ProcessingEngine.cs`
-- `Services/Viewport/Gates/GateProcessor.cs`
-
-Impact:
-
-- Additional compute load, especially for pseudocolor gates.
-
-### 7) Runtime metrics are lifetime averages only (low)
-
-Metrics accumulate from app start and never reset.
-
-- `Services/Viewport/ProcessingEngine.cs`
-- `Services/Viewport/RenderingEngine.cs`
+- `Worksheet.App/Views/PlotViews/PlotView.cs`
+- `Worksheet.App/Views/PlotViews/PseudocolorPlotView.cs`
+- `Worksheet.App/Views/PlotViews/SpectralRibbonPlotView.cs`
 
 Impact:
 
-- Hard to run clean A/B measurements for optimizations.
+- Normal data frames avoid ScottPlot heatmap update cost.
+- Feature/axis/bin changes still refresh ScottPlot chrome.
 
-## How Far Bitmap Preparation Can Go
+### 6) Gate processing is separate incremental state (medium)
 
-This section answers: how much work can be moved out of `Render()` for `Pseudocolor` and `SpectralRibbon`.
+Gate processing has its own processor and cached state. It is still keyed by gate geometry, plot settings, and data version.
 
-### ScottPlot Heatmap behavior constraints
+- `Worksheet.Core/Services/Viewport/ProcessingEngine.cs`
+- `Worksheet.Core/Services/Viewport/Gates/GateProcessor.cs`
 
-From local package docs (`ScottPlot 5.1.57` XML):
+Impact:
 
-- `Heatmap.Intensities` requires `Heatmap.Update()` after data change.
-- `Heatmap.CellColors` is generated on `Update()`.
-- `Heatmap.Bitmap` is generated at render and cleared on `Update()`.
-- `Heatmap.RenderStrategy` can be customized (`Bitmap` / `Rectangles`).
+- Gate work is separated from plot rendering.
+- Complex gates and many active gates can still add measurable compute load.
 
-Reference file:
+### 7) Runtime metrics can be reset, but are simple averages (low)
 
-- `C:\\Users\\ishei\\.nuget\\packages\\scottplot\\5.1.57\\lib\\net8.0\\ScottPlot.xml`
+Metrics can be reset from the app/session surface, but they are still cumulative averages after reset rather than rolling-window percentiles.
 
-### Practical precompute levels
+- `Worksheet.Core/Services/Viewport/ProcessingEngine.cs`
+- `Worksheet.App/Services/Viewport/RenderingEngine.cs`
+- `Worksheet.App/Services/Viewport/ViewportSession.cs`
 
-#### Level A (low risk, no plottable change)
+Impact:
 
-Keep ScottPlot `Heatmap`, but minimize work in `Render()`:
+- Useful for quick A/B checks.
+- Not enough for detailed latency distribution analysis.
 
-- Reuse the same intensity array instances when possible.
-- Call `_heatmap.Update()` only when data actually changed.
-- Avoid setting properties (`Extent`, `Colormap`, labels/ticks) unless settings changed.
-- Keep `Smooth = false`.
-- Set `ManualRange` when appropriate to avoid per-update data-range scans.
+## Current Bitmap Path
 
-Expected result:
+The app is already using the high-control bitmap path for pseudocolor and spectral ribbon data:
 
-- Less per-frame heatmap regeneration overhead.
-- Lowest code risk.
+```text
+PlotProcessor
+  -> RawCounts / Normalized
+  -> PixelBuffer
+  -> HeatmapProcessedData or SpectralRibbonProcessedData
+  -> PlotView.Render(...)
+  -> DynamicBitmap.PresentBitmap(...)
+```
 
-#### Level B (medium risk, still heatmap)
+ScottPlot remains useful for axes, ticks, labels, borders, and static interaction surfaces. The high-frequency data layer is a WPF image aligned to ScottPlot's data rectangle.
 
-Precompute more in processing:
-
-- Reuse pooled buffers for normalized/NaN-masked output.
-- Keep dimensions stable to avoid plottable recreation.
-- Optionally precompute ARGB arrays from intensities (if using custom render strategy path).
-
-Expected result:
-
-- Reduced compute allocations.
-- Render still pays `Heatmap.Update()` cost when intensities change.
-
-#### Level C (higher risk, custom image path)
-
-Bypass heatmap update work by preparing final bitmap payload before render:
-
-- Convert processed matrix to final pixel image in processing thread.
-- Render prebuilt image in UI via image plottable/custom plottable.
-
-Expected result:
-
-- `Render()` becomes mostly image assignment/draw.
-- More control and lower UI-side heatmap costs.
-
-Tradeoffs:
-
-- More custom code.
-- Must preserve axis mapping, color bar behavior, and hit-testing semantics manually.
-
-### Maximum realistic extent in current architecture
-
-Without replacing plottable type, the ceiling is:
-
-- "very light `Render()` setup + one `Heatmap.Update()` when data changes"
-
-You cannot fully eliminate heatmap update work while still driving ScottPlot `Heatmap` from changing `Intensities`.
-To make render almost no-op, you need Level C (pre-rendered image path).
+This split is the right direction for high-throughput multi-plot display.
 
 ## Recommended Next Steps (ordered)
 
-1. Move spectral snapshot fetch out of per-channel parallel lock contention (single metadata snapshot + lock-free channel reads).
-2. Reuse/pool pseudocolor temporary buffers in `PlotProcessor`.
-3. Add metric reset or rolling-window metrics for reliable benchmark comparisons.
-4. Introduce optional "render decimation mode" for pseudocolor (`BinCount` reduction).
-5. Evaluate Level C image-based path only if prior steps are insufficient.
+1. Decide the snapshot contract: keep weak live snapshots, copy selected columns, or introduce a read/write lock/double-buffer model.
+2. Move `FeatureSelectionStrategy` away from static global state if multiple independent sessions or channel maps become important.
+3. Add rolling or percentile latency metrics for processing/rendering, not only averages.
+4. Profile large active-plot counts with live ingestion to quantify UI-thread saturation.
+5. Split tests into `Worksheet.Core.Tests` and `Worksheet.App.Tests` if WPF test setup starts slowing Core-only validation.

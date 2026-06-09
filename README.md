@@ -104,11 +104,12 @@ Important semantics:
 
 The raw signal axis is layout-driven in `Worksheet.Core`:
 
-- `SignalLayout.Default` preserves the current `1 laser x 1 feature x 60 channels` shape.
+- `SignalLayout.Default` preserves the current `1 laser x 1 feature x 51 connected channels` shape.
 - Larger event shapes such as `6 lasers x 9 features x 60 channels` map to flat column indices with `SignalLayout.ToIndex(laser, feature, channel)`.
 - `DataSource` still stores signal values column-wise as `signalColumns[signalIndex][eventIndex]`, so selected Laser/Feature/Channel combinations can be read directly.
+- `EventBatchConverter<TEvent>` converts DAQ-style event object batches into `ColumnMajorEventBatch` payloads for the fast ingestion path.
 
-Default mock acquisition settings come from `Services/CHASM/ChasmOptions.cs`:
+Default mock acquisition settings come from `Worksheet.Core/Services/CHASM/ChasmOptions.cs`:
 
 - Acquisition interval: `25 ms`
 - Batch size: `500`
@@ -159,4 +160,4 @@ dotnet test .\Worksheet.Tests\Worksheet.Tests.csproj --no-restore --filter "Full
 
 ## Current State
 
-This repository appears to be an actively evolving prototype for interactive multi-plot visualization. The core desktop workflow is in place, and the docs already call out known performance constraints such as full recompute behavior, lock contention in spectral processing, allocation pressure in pseudocolor processing, and synchronous UI render dispatch.
+This repository appears to be an actively evolving prototype for interactive multi-plot visualization. The core desktop workflow is in place, with current audit notes covering ingestion throughput, live snapshot tradeoffs, incremental processing, bitmap-based rendering, and remaining UI-thread scalability risks.

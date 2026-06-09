@@ -7,6 +7,7 @@ This document explains the event pipeline in practical terms: where events are c
 ```mermaid
 flowchart LR
     Producer["MockProducer<br/>creates event batches"]
+    EventAdapter["EventBatchConverter&lt;TEvent&gt;<br/>normalizes DAQ event objects"]
     Channel["Bounded Channel&lt;IEventBatch&gt;<br/>short queue between producer and consumer"]
     Consumer["ChasmConsumer<br/>reads batches asynchronously"]
     Adapter["ChasmDataSource<br/>adapts batch layouts into DataSource writes"]
@@ -16,6 +17,7 @@ flowchart LR
     UI["ViewportSession / WPF UI<br/>starts streaming and coordinates updates"]
 
     UI -->|"start / stop streaming"| Producer
+    EventAdapter -.->|"ColumnMajorEventBatch"| Channel
     Producer -->|"TryWrite(batch)"| Channel
     Channel -->|"ReadAllAsync"| Consumer
     Consumer -->|"Append(batch)"| Adapter
@@ -97,6 +99,14 @@ MockProducer.Reader -> ChasmConsumer -> ChasmDataSource -> DataSource
 
 That means the producer does not write into `DataSource` directly. It writes into a channel. The consumer reads from that channel. The adapter writes into `DataSource`.
 
+For real DAQ integration, the equivalent boundary is:
+
+```text
+DAQ event-object batch -> EventBatchConverter<TEvent> -> ColumnMajorEventBatch -> Channel<IEventBatch>
+```
+
+`EventBatchConverter<TEvent>` is intentionally narrow. It converts event-object batches into CHASM's normalized flat column-major batch shape. It does not own the DAQ SDK, the rolling buffer, processing, or rendering.
+
 This keeps acquisition, queueing, storage, processing, and rendering separate enough to test and profile independently.
 
 ### Step 2: Streaming Starts
@@ -124,7 +134,7 @@ AcquisitionInterval: 25 ms
 BatchSize: 500
 ChannelCapacityBatches: 8
 WindowCapacityEvents: 200,000
-SignalLayout: 1 x 1 x 60 by default
+SignalLayout: 1 x 1 x 51 by default
 ```
 
 Every `AcquisitionInterval`, it creates one batch.
@@ -132,7 +142,7 @@ Every `AcquisitionInterval`, it creates one batch.
 With the default layout:
 
 ```text
-500 events/batch x 60 signal values/event = 30,000 doubles/batch
+500 events/batch x 51 signal values/event = 25,500 doubles/batch
 ```
 
 With a larger layout:
@@ -435,6 +445,24 @@ These are the invariants the design must protect.
 | The consumer does not need to know batch memory layout | `ChasmConsumer`, `IEventBatch` |
 | Unsupported batch layouts fail clearly | `ChasmDataSource` |
 
+## Event Object Conversion
+
+If a DAQ API provides batches of event objects, CHASM should not make `DataSource` understand that DAQ-specific object model. Instead, convert the object batch at the ingestion edge:
+
+```text
+IReadOnlyList<TEvent>
+    -> EventBatchConverter<TEvent>
+    -> ColumnMajorEventBatch
+```
+
+The converter writes:
+
+```text
+values[signalIndex * eventCount + eventIndex]
+```
+
+For `SignalEvent` objects, the converter validates that each event has the expected `SignalLayout.SignalCount` before writing the output batch. Large conversions use a parallel signal-first path, while small conversions stay single-threaded to avoid scheduling overhead.
+
 ## Why The Flat Path Is Faster
 
 The flat path is faster mainly because it reduces allocation pressure.
@@ -448,19 +476,20 @@ flat layout:       1 array per batch
 
 The CPU still has to copy the same amount of raw numeric data into `DataSource`, but the garbage collector has much less object bookkeeping to deal with.
 
-The recent profile run showed this clearly in the real CHASM path:
+Recent profile runs showed this clearly. Machine-specific numbers vary, but the shape is useful:
 
 ```text
-6x9x60 generate+capture
-jagged: about 32,680 events/sec
-flat:   about 50,944 events/sec
+SignalEvent object conversion path:
+1x1x51 convert+append:   about 900,840 events/sec
+6x9x50 convert+append:   about 50,769 events/sec
+6x9x60 convert+append:   about 39,060 events/sec
 
-6x9x60 prebuilt capture
-jagged: about 102,464 events/sec
-flat:   about 216,998 events/sec
+Flat prebuilt CHASM path:
+6x9x50 no-drop capture: about 269,743 events/sec
+6x9x60 no-drop capture: about 140,938 events/sec
 ```
 
-Those numbers are machine-specific, but the reason is structural: fewer allocations and a more compact batch representation.
+Those numbers are machine-specific, but the reason is structural: fewer allocations, fewer objects, and a more compact batch representation.
 
 ## Current Design Tradeoff
 
