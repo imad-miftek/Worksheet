@@ -61,6 +61,26 @@ namespace Worksheet.Services
             }
         }
 
+        public ChannelWindowSnapshot GetSnapshotCopy(int featureIndex)
+        {
+            int idx = ClampFeatureIndex(featureIndex);
+            lock (_lock)
+            {
+                var metadata = CaptureWindowMetadata();
+                var values = new double[_count];
+                CopyLogicalWindow(_channels[idx], values, metadata.startIndex, _count);
+
+                return new ChannelWindowSnapshot(
+                    Values: values,
+                    StartIndex: 0,
+                    Count: _count,
+                    Capacity: Math.Max(1, values.Length),
+                    Version: _dataVersion,
+                    StartSequence: metadata.startSequence,
+                    EndSequence: _totalEventsIngested);
+            }
+        }
+
         public MultiChannelWindowSnapshot GetSnapshot(params int[] featureIndices)
         {
             if (featureIndices == null || featureIndices.Length == 0)
@@ -81,6 +101,34 @@ namespace Worksheet.Services
                     StartIndex: metadata.startIndex,
                     Count: _count,
                     Capacity: _windowCapacity,
+                    Version: _dataVersion,
+                    StartSequence: metadata.startSequence,
+                    EndSequence: _totalEventsIngested);
+            }
+        }
+
+        public MultiChannelWindowSnapshot GetSnapshotCopy(params int[] featureIndices)
+        {
+            if (featureIndices == null || featureIndices.Length == 0)
+                return MultiChannelWindowSnapshot.Empty;
+
+            lock (_lock)
+            {
+                var metadata = CaptureWindowMetadata();
+                var channels = new double[featureIndices.Length][];
+                for (int i = 0; i < featureIndices.Length; i++)
+                {
+                    int idx = ClampFeatureIndex(featureIndices[i]);
+                    var values = new double[_count];
+                    CopyLogicalWindow(_channels[idx], values, metadata.startIndex, _count);
+                    channels[i] = values;
+                }
+
+                return new MultiChannelWindowSnapshot(
+                    ChannelValues: channels,
+                    StartIndex: 0,
+                    Count: _count,
+                    Capacity: Math.Max(1, _count),
                     Version: _dataVersion,
                     StartSequence: metadata.startSequence,
                     EndSequence: _totalEventsIngested);
@@ -225,6 +273,19 @@ namespace Worksheet.Services
             int remaining = count - firstSegment;
             if (remaining > 0)
                 Array.Copy(source, sourceOffset + firstSegment, destination, 0, remaining);
+        }
+
+        private void CopyLogicalWindow(double[] source, double[] destination, int startIndex, int count)
+        {
+            if (count <= 0)
+                return;
+
+            int firstSegment = Math.Min(count, _windowCapacity - startIndex);
+            Array.Copy(source, startIndex, destination, 0, firstSegment);
+
+            int remaining = count - firstSegment;
+            if (remaining > 0)
+                Array.Copy(source, 0, destination, firstSegment, remaining);
         }
 
         private (int startIndex, long startSequence) CaptureWindowMetadata()

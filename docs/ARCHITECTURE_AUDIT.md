@@ -52,23 +52,27 @@ IProducer
 For DAQ event-object batches:
 
 ```text
-IReadOnlyList<TEvent>
-  -> EventBatchConverter<TEvent>
+IReadOnlyList<Event>
+  -> EventProducer
+  -> EventBatchConverter<Event>
   -> ColumnMajorEventBatch
   -> Channel<IEventBatch>
 ```
 
-This is the right boundary. DAQ-specific event objects should be normalized before entering the main CHASM queue. `DataSource` should continue to receive known CHASM batch shapes, not arbitrary DAQ SDK objects.
+This is the right boundary. DAQ-specific event objects should be normalized before entering the main CHASM queue. `EventProducer` is the production-shaped push boundary for object batches; `DataSource` should continue to receive known CHASM batch shapes, not arbitrary DAQ SDK objects.
 
 ## Correctness Fixes Applied
 
 ### Event object shape validation
 
-`EventBatchConverter<TEvent>` now validates `IEventSignalValues.SignalCount` against the configured `SignalLayout` before conversion. This prevents short or wrong-shaped `SignalEvent` batches from failing later inside the conversion loop or inside `Parallel.For`.
+`EventBatchConverter<TEvent>` now validates `IEventSignalValues.SignalCount` against the configured `SignalLayout` before conversion. This prevents short or wrong-shaped `Event` batches from failing later inside the conversion loop or inside `Parallel.For`.
 
 Evidence:
 
+- `Worksheet.Core/Services/CHASM/Event.cs`
+- `Worksheet.Core/Services/CHASM/EventProducer.cs`
 - `Worksheet.Core/Services/CHASM/EventBatchConverter.cs`
+- `Worksheet.Tests/EventProducerTests.cs`
 - `Worksheet.Tests/EventBatchConverterTests.cs`
 
 ### Explicit channel count naming
@@ -113,11 +117,32 @@ Evidence:
 
 `ChannelWindowSnapshot` and `MultiChannelWindowSnapshot` now document that they are live views over `DataSource` backing arrays, and they reject out-of-range sequence, logical-index, and channel access. This does not make snapshots immutable, but it prevents silent ring-index aliasing if future code asks for a sequence outside the captured logical window.
 
+`DataSource` also exposes copied snapshot APIs for paths that need a stable, contiguous view:
+
+```text
+GetSnapshotCopy(signalIndex)
+GetSnapshotCopy(params signalIndices)
+```
+
+The copied APIs keep the existing logical event order, return snapshots with `StartIndex = 0`, and remain stable after later appends. They should not replace the hot live-snapshot path by default. A profile run on this machine showed one- and two-signal copies are cheap, while repeated 42-signal spectral copies are a meaningful cost:
+
+```text
+1x1x51 histogram copy, 1 selected signal:      1.60 ms for 20 snapshots
+1x1x51 pseudocolor copy, 2 selected signals:   0.76 ms for 20 snapshots
+1x1x51 spectral copy, 42 selected signals:    56.95 ms for 20 snapshots
+6x9x60 pseudocolor copy, 2 selected signals:   0.63 ms for 20 snapshots
+6x9x60 spectral copy, 42 selected signals:    59.40 ms for 20 snapshots
+```
+
+Policy: keep processors on live snapshots unless a path specifically needs isolation from concurrent appends or needs contiguous copied data at a thread boundary.
+
 Evidence:
 
 - `Worksheet.Core/Services/Viewport/ChannelWindowSnapshot.cs`
 - `Worksheet.Core/Services/Viewport/MultiChannelWindowSnapshot.cs`
+- `Worksheet.Core/Services/Viewport/DataSource.cs`
 - `Worksheet.Tests/DataSourceTests.cs`
+- `Worksheet.Tests/IngestionProfileTests.cs`
 
 ## Main Remaining Risks
 

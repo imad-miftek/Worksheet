@@ -7,7 +7,8 @@ This document explains the event pipeline in practical terms: where events are c
 ```mermaid
 flowchart LR
     Producer["MockProducer<br/>creates event batches"]
-    EventAdapter["EventBatchConverter&lt;TEvent&gt;<br/>normalizes DAQ event objects"]
+    EventProducer["EventProducer<br/>accepts Event object batches"]
+    EventAdapter["EventBatchConverter&lt;Event&gt;<br/>normalizes DAQ event objects"]
     Channel["Bounded Channel&lt;IEventBatch&gt;<br/>short queue between producer and consumer"]
     Consumer["ChasmConsumer<br/>reads batches asynchronously"]
     Adapter["ChasmDataSource<br/>adapts batch layouts into DataSource writes"]
@@ -17,7 +18,8 @@ flowchart LR
     UI["ViewportSession / WPF UI<br/>starts streaming and coordinates updates"]
 
     UI -->|"start / stop streaming"| Producer
-    EventAdapter -.->|"ColumnMajorEventBatch"| Channel
+    EventProducer -->|"Publish(IReadOnlyList<Event>)"| EventAdapter
+    EventAdapter -->|"ColumnMajorEventBatch"| Channel
     Producer -->|"TryWrite(batch)"| Channel
     Channel -->|"ReadAllAsync"| Consumer
     Consumer -->|"Append(batch)"| Adapter
@@ -445,14 +447,29 @@ These are the invariants the design must protect.
 | The consumer does not need to know batch memory layout | `ChasmConsumer`, `IEventBatch` |
 | Unsupported batch layouts fail clearly | `ChasmDataSource` |
 
+## Snapshot Contract
+
+`DataSource` supports two snapshot styles:
+
+```text
+GetSnapshot(...)      -> live ring-buffer view
+GetSnapshotCopy(...)  -> stable contiguous copy
+```
+
+The live snapshot path is the default hot path for plot processors. It avoids allocations and lets histogram, pseudocolor, and spectral processing read selected columns directly from retained memory. The tradeoff is that the backing arrays can be updated by later ingestion while a processor is scanning them.
+
+The copied snapshot path exists for correctness-sensitive boundaries. It copies the selected logical window into new arrays, sets `StartIndex = 0`, and remains stable after later appends. It is cheap for one or two selected signals, but expensive for wide selections such as spectral ribbon copies over 42 signals.
+
 ## Event Object Conversion
 
 If a DAQ API provides batches of event objects, CHASM should not make `DataSource` understand that DAQ-specific object model. Instead, convert the object batch at the ingestion edge:
 
 ```text
-IReadOnlyList<TEvent>
-    -> EventBatchConverter<TEvent>
+IReadOnlyList<Event>
+    -> EventProducer.Publish(...)
+    -> EventBatchConverter<Event>
     -> ColumnMajorEventBatch
+    -> Channel<IEventBatch>
 ```
 
 The converter writes:
@@ -461,7 +478,9 @@ The converter writes:
 values[signalIndex * eventCount + eventIndex]
 ```
 
-For `SignalEvent` objects, the converter validates that each event has the expected `SignalLayout.SignalCount` before writing the output batch. Large conversions use a parallel signal-first path, while small conversions stay single-threaded to avoid scheduling overhead.
+For `Event` objects, the converter validates that each event has the expected `SignalLayout.SignalCount` before writing the output batch. Large conversions use a parallel signal-first path, while small conversions stay single-threaded to avoid scheduling overhead.
+
+`EventProducer` is intentionally a push boundary. It does not synthesize data like `MockProducer`; a DAQ callback or SDK adapter can call `Publish(...)` with the event batch it received. If the real DAQ can provide flat column-major buffers directly, it can bypass `EventProducer` and write `ColumnMajorEventBatch` payloads into CHASM instead.
 
 ## Why The Flat Path Is Faster
 
@@ -479,10 +498,15 @@ The CPU still has to copy the same amount of raw numeric data into `DataSource`,
 Recent profile runs showed this clearly. Machine-specific numbers vary, but the shape is useful:
 
 ```text
-SignalEvent object conversion path:
+Event object conversion path:
 1x1x51 convert+append:   about 900,840 events/sec
 6x9x50 convert+append:   about 50,769 events/sec
 6x9x60 convert+append:   about 39,060 events/sec
+
+EventProducer publish path:
+1x1x51 publish:          about 946,396 events/sec
+6x9x50 publish:          about 109,286 events/sec
+6x9x60 publish:          about 90,025 events/sec
 
 Flat prebuilt CHASM path:
 6x9x50 no-drop capture: about 269,743 events/sec

@@ -196,6 +196,57 @@ public sealed class DataSourceTests
     }
 
     [Fact]
+    public void SnapshotCopyIsContiguousAndStableAfterLaterAppend()
+    {
+        var source = new DataSource(windowCapacity: 3);
+        var first = CreateBatch(count: 5);
+        var second = CreateBatch(count: 1);
+
+        for (int e = 0; e < 5; e++)
+            first[2][e] = 20 + e;
+        second[2][0] = 99;
+
+        source.AppendBatch(first, count: 5);
+        var snapshot = source.GetSnapshotCopy(2);
+        source.AppendBatch(second, count: 1);
+
+        Assert.True(snapshot.IsContiguous);
+        Assert.Equal(0, snapshot.StartIndex);
+        Assert.Equal(3, snapshot.Count);
+        Assert.Equal(3, snapshot.Capacity);
+        Assert.Equal(2, snapshot.StartSequence);
+        Assert.Equal(5, snapshot.EndSequence);
+        Assert.Equal([22, 23, 24], snapshot.Values);
+    }
+
+    [Fact]
+    public void MultiChannelSnapshotCopyIsContiguousAndStableAfterLaterAppend()
+    {
+        var source = new DataSource(windowCapacity: 3);
+        var first = CreateBatch(count: 5);
+        var second = CreateBatch(count: 1);
+
+        for (int e = 0; e < 5; e++)
+        {
+            first[2][e] = 20 + e;
+            first[3][e] = 30 + e;
+        }
+        second[2][0] = 99;
+        second[3][0] = 199;
+
+        source.AppendBatch(first, count: 5);
+        var snapshot = source.GetSnapshotCopy(2, 3);
+        source.AppendBatch(second, count: 1);
+
+        Assert.True(snapshot.IsContiguous);
+        Assert.Equal(0, snapshot.StartIndex);
+        Assert.Equal(3, snapshot.Count);
+        Assert.Equal(3, snapshot.Capacity);
+        Assert.Equal([22, 23, 24], snapshot.ChannelValues[0]);
+        Assert.Equal([32, 33, 34], snapshot.ChannelValues[1]);
+    }
+
+    [Fact]
     public void EventBatchAcceptsCustomSignalLayout()
     {
         var layout = new SignalLayout(6, 9, 60);

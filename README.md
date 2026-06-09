@@ -107,6 +107,8 @@ The raw signal axis is layout-driven in `Worksheet.Core`:
 - `SignalLayout.Default` preserves the current `1 laser x 1 feature x 51 connected channels` shape.
 - Larger event shapes such as `6 lasers x 9 features x 60 channels` map to flat column indices with `SignalLayout.ToIndex(laser, feature, channel)`.
 - `DataSource` still stores signal values column-wise as `signalColumns[signalIndex][eventIndex]`, so selected Laser/Feature/Channel combinations can be read directly.
+- `DataSource.GetSnapshot(...)` returns the fast live ring-buffer view; `DataSource.GetSnapshotCopy(...)` returns a stable contiguous copy for paths that need isolation.
+- `EventProducer.Publish(...)` accepts `IReadOnlyList<Event>` batches and writes normalized `ColumnMajorEventBatch` payloads into CHASM.
 - `EventBatchConverter<TEvent>` converts DAQ-style event object batches into `ColumnMajorEventBatch` payloads for the fast ingestion path.
 
 Default mock acquisition settings come from `Worksheet.Core/Services/CHASM/ChasmOptions.cs`:
@@ -151,6 +153,8 @@ For ingestion-only throughput and raw payload bandwidth:
 ```powershell
 dotnet test .\Worksheet.Tests\Worksheet.Tests.csproj --no-restore --filter "FullyQualifiedName~IngestionProfileTests" --logger "console;verbosity=detailed"
 ```
+
+`IngestionProfileTests.ProfileSnapshotCopyCost` reports the live-versus-copied snapshot cost for one-signal, two-signal, and spectral-width selections.
 
 For real CHASM channel/consumer ingestion throughput:
 

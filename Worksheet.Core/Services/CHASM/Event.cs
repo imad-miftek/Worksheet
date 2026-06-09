@@ -2,11 +2,11 @@ using System;
 
 namespace Worksheet.Services
 {
-    public sealed class SignalEvent : IEventSignalValues
+    public sealed class Event : IEventSignalValues
     {
         private readonly double[] _values;
 
-        public SignalEvent(double[] values)
+        public Event(double[] values)
         {
             _values = values ?? throw new ArgumentNullException(nameof(values));
         }

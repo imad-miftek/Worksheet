@@ -29,6 +29,17 @@ Impact:
 - Fast and allocation-free snapshots.
 - Processing can observe partially newer values if ingestion writes while a processor is scanning a snapshot.
 - This is a deliberate performance tradeoff, but it should be treated as a weak snapshot contract.
+- `GetSnapshotCopy(...)` is available when a stable contiguous snapshot is needed, but it allocates and copies selected columns.
+
+Measured copy cost from the current profile test run:
+
+```text
+1 selected signal:       1.60 ms for 20 copied snapshots
+2 selected signals:   0.63-0.76 ms for 20 copied snapshots
+42 selected signals: 56.95-59.40 ms for 20 copied snapshots
+```
+
+Use live snapshots for hot plot processors by default. Use copied snapshots only where correctness or thread-boundary isolation matters more than copy cost.
 
 ### 2) Processing is incremental, but still scheduled per data version (medium)
 
@@ -137,7 +148,7 @@ This split is the right direction for high-throughput multi-plot display.
 
 ## Recommended Next Steps (ordered)
 
-1. Decide the snapshot contract: keep weak live snapshots, copy selected columns, or introduce a read/write lock/double-buffer model.
+1. Keep the current split snapshot contract: live snapshots for hot processors, copied snapshots for isolation-sensitive paths.
 2. Move `FeatureSelectionStrategy` away from static global state if multiple independent sessions or channel maps become important.
 3. Add rolling or percentile latency metrics for processing/rendering, not only averages.
 4. Profile large active-plot counts with live ingestion to quantify UI-thread saturation.

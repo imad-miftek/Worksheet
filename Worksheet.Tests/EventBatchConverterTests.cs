@@ -92,12 +92,12 @@ public sealed class EventBatchConverterTests
     }
 
     [Fact]
-    public void ConvertRejectsSignalEventsThatDoNotMatchLayout()
+    public void ConvertRejectsEventsThatDoNotMatchLayout()
     {
         var layout = new SignalLayout(1, 1, 3);
-        var converter = new EventBatchConverter<SignalEvent>(layout);
+        var converter = new EventBatchConverter<Event>(layout);
 
-        var ex = Assert.Throws<ArgumentException>(() => converter.Convert([new SignalEvent([10, 20])]));
+        var ex = Assert.Throws<ArgumentException>(() => converter.Convert([new Event([10, 20])]));
 
         Assert.Contains("expected 3", ex.Message);
     }
