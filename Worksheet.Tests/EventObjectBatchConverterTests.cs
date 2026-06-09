@@ -62,6 +62,36 @@ public sealed class EventObjectBatchConverterTests
     }
 
     [Fact]
+    public void ConvertStoresEventObjectsInColumnMajorOrderWhenParallelPathIsUsed()
+    {
+        var converter = CreateConverter(signalCount: 3, parallelCellThreshold: 1);
+        var events = new[]
+        {
+            new TestEvent([10, 20, 30]),
+            new TestEvent([11, 21, 31]),
+            new TestEvent([12, 22, 32]),
+        };
+
+        var batch = Assert.Single(converter.Convert(events));
+
+        Assert.Equal(
+            [
+                10, 11, 12,
+                20, 21, 22,
+                30, 31, 32,
+            ],
+            batch.Values);
+    }
+
+    [Fact]
+    public void ConverterExposesParallelThreshold()
+    {
+        var converter = CreateConverter(signalCount: 3, parallelCellThreshold: 123);
+
+        Assert.Equal(123, converter.ParallelCellThreshold);
+    }
+
+    [Fact]
     public void TryWriteToWritesConvertedBatchesToChasmChannel()
     {
         var converter = CreateConverter(signalCount: 2, maxBatchSize: 2);
@@ -85,13 +115,17 @@ public sealed class EventObjectBatchConverterTests
         Assert.Equal([12, 22], second.Values);
     }
 
-    private static EventObjectBatchConverter<TestEvent> CreateConverter(int signalCount, int maxBatchSize = 1000)
+    private static EventObjectBatchConverter<TestEvent> CreateConverter(
+        int signalCount,
+        int maxBatchSize = 1000,
+        int parallelCellThreshold = EventObjectBatchConverter<TestEvent>.DefaultParallelCellThreshold)
     {
         var layout = new SignalLayout(1, 1, signalCount);
         return new EventObjectBatchConverter<TestEvent>(
             layout,
             static (ev, signalIndex) => ev.Values[signalIndex],
-            maxBatchSize);
+            maxBatchSize,
+            parallelCellThreshold);
     }
 
     private sealed record TestEvent(double[] Values);

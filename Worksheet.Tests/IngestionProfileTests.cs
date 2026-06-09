@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using Worksheet.Models;
 using Worksheet.Services;
@@ -209,6 +210,56 @@ public sealed class IngestionProfileTests
         WriteThroughput($"Fill reused flat column-major+append {lasers}x{features}x{channels}", layout, BatchCount * BatchSize, elapsed);
     }
 
+    [Theory]
+    [Trait("Category", "Profile")]
+    [InlineData(1, 1, 51)]
+    [InlineData(1, 1, 60)]
+    [InlineData(6, 9, 50)]
+    [InlineData(6, 9, 60)]
+    public void ProfileSignalEventConversionToColumnMajor(int lasers, int features, int channels)
+    {
+        var layout = new SignalLayout(lasers, features, channels);
+        var converter = new EventObjectBatchConverter<SignalEvent>(layout, maxBatchSize: BatchSize);
+        var events = CreateSignalEvents(layout.SignalCount, BatchSize, offset: 0);
+        IReadOnlyList<ColumnMajorEventBatch> batches = Array.Empty<ColumnMajorEventBatch>();
+
+        var elapsed = Measure(() =>
+        {
+            for (int i = 0; i < BatchCount; i++)
+                batches = converter.Convert(events);
+        });
+
+        var batch = Assert.Single(batches);
+        Assert.Equal(BatchSize, batch.Count);
+        WriteThroughput($"SignalEvent convert to flat column-major {lasers}x{features}x{channels}", layout, BatchCount * BatchSize, elapsed);
+    }
+
+    [Theory]
+    [Trait("Category", "Profile")]
+    [InlineData(1, 1, 51)]
+    [InlineData(1, 1, 60)]
+    [InlineData(6, 9, 50)]
+    [InlineData(6, 9, 60)]
+    public void ProfileSignalEventConversionAndAppend(int lasers, int features, int channels)
+    {
+        var layout = new SignalLayout(lasers, features, channels);
+        var source = new DataSource(layout, windowCapacity: BatchCount * BatchSize);
+        var converter = new EventObjectBatchConverter<SignalEvent>(layout, maxBatchSize: BatchSize);
+        var events = CreateSignalEvents(layout.SignalCount, BatchSize, offset: 0);
+
+        var elapsed = Measure(() =>
+        {
+            for (int i = 0; i < BatchCount; i++)
+            {
+                var batch = Assert.Single(converter.Convert(events));
+                source.AppendBatch(batch);
+            }
+        });
+
+        Assert.Equal(BatchCount * BatchSize, source.TotalEventsIngested);
+        WriteThroughput($"SignalEvent convert+append {lasers}x{features}x{channels}", layout, BatchCount * BatchSize, elapsed);
+    }
+
     private static TimeSpan Measure(Action action)
     {
         GC.Collect();
@@ -246,6 +297,21 @@ public sealed class IngestionProfileTests
         var values = AllocateFlatColumnMajorBatch(signalCount, count);
         FillFlatColumnMajorBatch(values, signalCount, count, offset);
         return values;
+    }
+
+    private static SignalEvent[] CreateSignalEvents(int signalCount, int count, int offset)
+    {
+        var events = new SignalEvent[count];
+        for (int e = 0; e < count; e++)
+        {
+            var values = new double[signalCount];
+            for (int s = 0; s < signalCount; s++)
+                values[s] = 1 + (((offset + e + 1) * (s + 3) * 7919) % 100_000_000);
+
+            events[e] = new SignalEvent(values);
+        }
+
+        return events;
     }
 
     private static double[][] AllocateBatch(int signalCount, int count)
