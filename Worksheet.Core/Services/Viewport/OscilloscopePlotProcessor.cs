@@ -17,6 +17,11 @@ namespace Worksheet.Services
 
         public OscilloscopeProcessedData Process(PlotSettings settings)
         {
+            return Process(settings, RenderTargetSize.Empty);
+        }
+
+        public OscilloscopeProcessedData Process(PlotSettings settings, RenderTargetSize targetSize)
+        {
             if (settings == null)
                 throw new ArgumentNullException(nameof(settings));
 

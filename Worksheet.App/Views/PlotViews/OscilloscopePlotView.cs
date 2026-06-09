@@ -14,14 +14,13 @@ namespace Worksheet.Views.PlotViews
         private const double FixedYMin = -0.18;
         private const double FixedYMax = 0.52;
         private readonly List<Signal> _signals = new();
-        private readonly List<double[]> _waveformData = new();
-        private readonly Color[] _channelColors = new[]
-        {
-            Color.FromHex("#2196F3"),  // Blue
-            Color.FromHex("#4CAF50"),  // Green
-            Color.FromHex("#FF9800"),  // Orange
-            Color.FromHex("#E91E63"),  // Pink
-        };
+        private readonly Color[] _channelColors =
+        [
+            Color.FromHex("#2196F3"),
+            Color.FromHex("#4CAF50"),
+            Color.FromHex("#FF9800"),
+            Color.FromHex("#E91E63"),
+        ];
 
         public OscilloscopePlotView(
             OscilloscopeContextMenu contextMenu,
@@ -35,6 +34,7 @@ namespace Worksheet.Views.PlotViews
         public override void Configure(WpfPlot plot)
         {
             ConfigureAxes(plot);
+            SetSignalLimits(plot, Settings.GetBinCount());
             plot.Refresh();
         }
 
@@ -43,25 +43,27 @@ namespace Worksheet.Views.PlotViews
             if (data is not OscilloscopeProcessedData oscilloscopeData)
                 return;
 
+            if (oscilloscopeData.IsEmpty || oscilloscopeData.Signals.Length == 0)
+            {
+                RenderOnce(plot, () =>
+                {
+                    plot.Plot.Clear();
+                    _signals.Clear();
+                    ConfigureAxes(plot);
+                    SetSignalLimits(plot, 1);
+                });
+                return;
+            }
+
             RenderOnce(plot, () =>
             {
                 plot.Plot.Clear();
                 _signals.Clear();
-                _waveformData.Clear();
                 ConfigureAxes(plot);
-
-                if (oscilloscopeData.IsEmpty || oscilloscopeData.Signals.Length == 0)
-                {
-                    SetEmptyLimits(plot);
-                    return;
-                }
 
                 for (int channel = 0; channel < oscilloscopeData.Signals.Length; channel++)
                 {
-                    double[] waveform = oscilloscopeData.Signals[channel];
-                    _waveformData.Add(waveform);
-
-                    var signal = plot.Plot.Add.Signal(waveform);
+                    var signal = plot.Plot.Add.Signal(oscilloscopeData.Signals[channel]);
                     signal.Color = _channelColors[channel % _channelColors.Length];
                     signal.LineWidth = 1;
                     _signals.Add(signal);
@@ -75,12 +77,6 @@ namespace Worksheet.Views.PlotViews
         {
             plot.Plot.YLabel("Voltage (V)");
             plot.Plot.XLabel("Time (samples)");
-        }
-
-        private static void SetEmptyLimits(WpfPlot plot)
-        {
-            plot.Plot.Axes.SetLimitsX(0, 1);
-            plot.Plot.Axes.SetLimitsY(FixedYMin, FixedYMax);
         }
 
         private static void SetSignalLimits(WpfPlot plot, int timestampCount)

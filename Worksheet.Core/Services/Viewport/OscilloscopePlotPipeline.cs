@@ -21,7 +21,7 @@ namespace Worksheet.Services
 
         public ProcessedPlotData? Process(PlotSettings settings, RenderTargetSize targetSize)
         {
-            return _processor.Process(settings);
+            return _processor.Process(settings, targetSize);
         }
 
         public int GetSettingsHash(PlotSettings settings, RenderTargetSize targetSize)
