@@ -155,6 +155,32 @@ ChasmDataSource = translates EventBatch / ColumnMajorEventBatch into DataSource 
 DataSource      = owns the fixed-capacity ring buffer and DataVersion
 ```
 
+The `L/F/C` selection chooses which signal window to read; the rolling-window
+metadata chooses which retained events inside that signal are currently visible:
+
+```mermaid
+flowchart LR
+    Selection["Plot selection<br/>Laser / Feature / Channel"]
+    Layout["SignalLayout.ToIndex(...)<br/>((L * FeatureCount) + F) * ChannelCount + C"]
+    Column["DataSource._channels[signalIndex]<br/>one rolling event window for that signal"]
+    Snapshot["Snapshot metadata<br/>StartIndex / Count / Capacity"]
+    Physical["Physical ring access<br/>(StartIndex + logicalEventIndex) % Capacity"]
+    Processor["Plot processor<br/>reads values in event order"]
+
+    Selection --> Layout
+    Layout --> Column
+    Column --> Snapshot
+    Snapshot --> Physical
+    Physical --> Processor
+```
+
+So a selected `Laser/Feature/Channel` does not scan every signal. It maps to one
+flattened `signalIndex`, then reads only that signal's retained rolling window.
+For a `6 x 9 x 51` layout, the retained parameter storage is `2754` signal
+windows, each with up to `_windowCapacity` recent event values. When the ring
+wraps, logical event order is recovered with the snapshot's `StartIndex`,
+`Count`, and `Capacity`.
+
 The pipeline has two related streams:
 
 - Parameter events are flattened numeric values shaped by `SignalLayout`. They feed histograms, pseudocolor plots, spectral ribbon plots, and gates.
