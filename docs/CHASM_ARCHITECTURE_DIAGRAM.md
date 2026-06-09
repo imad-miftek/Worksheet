@@ -40,6 +40,26 @@ Think of the pipeline like a factory line.
 - The plot processors read from the shelf and build display data.
 - The renderers draw that display data on screen.
 
+## Standard Layer Model
+
+The CHASM names make more sense if every class is assigned to one layer. Do not read `Producer`, `Consumer`, and `Adapter` as equal business concepts; they are different mechanics inside one ingestion pipeline.
+
+| Layer | Responsibility | Current classes | Standard rule |
+| --- | --- | --- | --- |
+| Ingress source | Creates or receives incoming event batches and puts them on the queue | `MockProducer`, `EventProducer`, `IEventIngestionPort` | This is the only layer that talks to mock generation, DAQ callbacks, or external acquisition APIs. |
+| Batch normalization | Converts external/object-shaped data into CHASM batch payloads | `EventBatchConverter<TEvent>`, `Event`, `IEventSignalValues` | External event objects are normalized before they enter the CHASM queue. |
+| Queue transport | Buffers batches between acquisition and storage | `Channel<IEventBatch>`, `IEventBatch`, `EventBatch`, `ColumnMajorEventBatch` | The queue carries CHASM batch messages only; it does not know about DAQ SDK objects or retained storage. |
+| Queue drain | Reads queued batches asynchronously | `ChasmConsumer`, `IConsumer` | This layer owns the async read loop only. It should not know batch memory layout details. |
+| Store append | Interprets CHASM batch payloads and appends them to retained memory | `ChasmDataSource`, `IChasmDataSource` | This is the only crossing point from temporary batch messages into the rolling `DataSource`. |
+| Retained store | Owns bounded raw event memory and snapshot access | `DataSource`, snapshots | This is the source of truth for retained events. It should not know mock, DAQ, or SDK types. |
+
+The confusing part is that `EventProducer` is not the same kind of producer as `MockProducer` internally:
+
+- `MockProducer` actively generates data on its own background task.
+- `EventProducer` is a push ingress port; another owner calls `PublishEvents(...)` or `PublishColumnMajor(...)`.
+
+They still both belong to the same layer because both feed `Channel<IEventBatch>`. That is the standardization point.
+
 ## The Entire Ingestion Pipeline
 
 This is the full story from app startup to pixels on the screen.

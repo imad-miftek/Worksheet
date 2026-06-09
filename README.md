@@ -90,7 +90,7 @@ The `Load Histogram Config` toolbar action currently builds a preset layout with
 
 The current architecture is built around a bounded rolling raw-event window:
 
-1. `MockProducer` emits event batches into the `CHASM` pipeline.
+1. An ingress source emits event batches into the `CHASM` pipeline. Today that can be `MockProducer` or the push-style `EventProducer`.
 2. `ViewportSession` coordinates ingestion, processing, rendering, and gate evaluation.
 3. `DataSource` and related viewport services retain a fixed-capacity logical event window.
 4. `ProcessingEngine` produces plot-ready data when retained data changes.

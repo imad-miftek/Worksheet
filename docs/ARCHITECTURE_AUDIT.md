@@ -39,10 +39,21 @@ The project split is directionally correct: app code depends on core, while core
 
 ## CHASM Ingestion
 
-Current ingestion path:
+Standardized ingestion layers:
+
+| Layer | Responsibility | Current classes |
+| --- | --- | --- |
+| Ingress source | Generates or receives incoming event batches | `MockProducer`, `EventProducer`, `IEventIngestionPort` |
+| Batch normalization | Converts external event shapes into CHASM batch payloads | `EventBatchConverter<TEvent>`, `Event`, `IEventSignalValues` |
+| Queue transport | Buffers normalized CHASM batches | `Channel<IEventBatch>`, `IEventBatch`, `EventBatch`, `ColumnMajorEventBatch` |
+| Queue drain | Reads queued batches asynchronously | `ChasmConsumer`, `IConsumer` |
+| Store append | Dispatches batch layouts into retained storage writes | `ChasmDataSource`, `IChasmDataSource` |
+| Retained store | Owns bounded raw event memory and snapshots | `DataSource` |
+
+Current mock ingestion path:
 
 ```text
-IProducer
+MockProducer
   -> Channel<IEventBatch>
   -> ChasmConsumer
   -> ChasmDataSource
@@ -69,6 +80,8 @@ double[] columnMajorValues + eventCount
 ```
 
 This is the right boundary. DAQ-specific event objects should be normalized before entering the main CHASM queue. `EventProducer` is the production-shaped push boundary for both object batches and already-flat buffers; `DataSource` should continue to receive known CHASM batch shapes, not arbitrary DAQ SDK objects. `PublishColumnMajor(...)` is the no-copy fast path, so callers must treat the published buffer as transferred to CHASM.
+
+Naming policy: keep code grouped by these layers. New DAQ-specific code should be named as an ingress source or adapter into `IEventIngestionPort`, not as another consumer or data source. The only current name that may deserve a future rename is `ChasmDataSource`; its actual job is store append / batch-layout dispatch, not acquisition. A clearer future name would be `EventBatchAppender`, but that rename is not required for behavior.
 
 ## Correctness Fixes Applied
 
