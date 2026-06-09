@@ -213,6 +213,50 @@ Useful project documents:
 
 Focused Core processing profile tests live in `Worksheet.Tests`.
 
+The profile tests print metrics for review and comparison. They are intentionally not strict performance gates because throughput depends on CPU, memory bandwidth, runtime warmup, active background processes, and debug/release configuration.
+
+| Test area | Test class | Main metrics printed | What it tells you |
+| --- | --- | --- | --- |
+| Event ingestion storage | `IngestionProfileTests` | events/sec, MiB/sec raw payload, payload size | How fast raw event batches can be allocated, filled, converted, appended, and snapshotted |
+| CHASM pipeline | `ChasmPipelineProfileTests` | produced events/sec, captured events/sec, dropped batches/events, captured MiB/sec | How fast the producer/channel/consumer/source path can move events end to end |
+| Plot processing | `ProcessingProfileTests` | full rebuild time, delta processing time, events/sec | Whether plot processors are rebuilding whole windows or applying incremental updates efficiently |
+| Plot rendering | `RenderingProfileTests` | average render ms, renders/sec | How expensive each `PlotView.Render(...)` path is, including bitmap and oscilloscope signal rendering |
+| DPI/render target sizing | `DpiAwarenessTests` | expected physical pixel dimensions | Whether WPF device-independent sizes map correctly to bitmap pixel buffers |
+| Oscilloscope processing | `ProcessingEngineOscilloscopeTests`, `OscilloscopePlotProcessorTests` | selected channel extraction, latest-capture behavior, cadence separation | Whether waveform processing follows oscilloscope buffer updates independently from parameter plots |
+
+Useful numbers to compare between runs:
+
+- `events/sec`: logical events handled per second for the measured path.
+- `MiB/sec raw`: approximate numeric payload bandwidth, usually `events/sec * signalCount * sizeof(double)`.
+- `captured events/sec`: events that actually reached `DataSource` after queueing and backpressure.
+- `dropped`: batches or events lost because bounded queues favored newer data.
+- `full rebuild count`: number of times processors had to recompute from the full retained window.
+- `delta applied count`: number of times processors updated only from new event ranges.
+- `average render ms`: UI-thread render method cost per plot type.
+
+Sample local profile run from June 9, 2026:
+
+| Area | Scenario | Measured result |
+| --- | --- | --- |
+| Event producer object publish | `1x1x51` | `592,680 events/sec`, `230.6 MiB/sec raw` |
+| Event producer object publish | `6x9x50` | `54,068 events/sec`, `1,113.8 MiB/sec raw` |
+| Event producer object publish | `6x9x60` | `51,234 events/sec`, `1,266.5 MiB/sec raw` |
+| Event convert + append | `1x1x51` | `1,218,153 events/sec`, `474.0 MiB/sec raw` |
+| Event convert + append | `6x9x50` | `52,240 events/sec`, `1,076.1 MiB/sec raw` |
+| Event convert + append | `6x9x60` | `62,751 events/sec`, `1,551.2 MiB/sec raw` |
+| CHASM no-drop prebuilt | `6x9x50` | `32,476 captured events/sec`, `669.0 MiB/sec captured raw` |
+| CHASM no-drop flat prebuilt | `6x9x50` | `256,179 captured events/sec`, `5,277.1 MiB/sec captured raw` |
+| CHASM no-drop flat generate + capture | `6x9x60` | `37,570 captured events/sec`, `928.7 MiB/sec captured raw` |
+| Snapshot copy cost | `6x9x60`, spectral-width `42` selected signals | live `0.01 ms` vs copy `19.22 ms` for `20` snapshots |
+| Plot processing | histogram full / delta | `17.37 ms` full, `1.21 ms` delta |
+| Plot processing | pseudocolor full / delta | `20.60 ms` full, `7.38 ms` delta |
+| Plot processing | spectral ribbon full / delta | `184.45 ms` full, `30.01 ms` delta |
+| Plot rendering | histogram | `0.12 ms avg`, `8,494 renders/sec` |
+| Plot rendering | pseudocolor | `0.02 ms avg`, `60,783 renders/sec` |
+| Plot rendering | spectral ribbon | `0.01 ms avg`, `136,761 renders/sec` |
+| Plot rendering | oscilloscope signal | `0.02 ms avg`, `66,208 renders/sec` |
+| Oscilloscope compute | raw signal extraction | `1.11 ms avg` |
+
 ```powershell
 dotnet test .\Worksheet.Tests\Worksheet.Tests.csproj --no-restore --filter "Category=Profile" --logger "console;verbosity=detailed"
 ```
