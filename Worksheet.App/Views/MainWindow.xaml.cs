@@ -16,7 +16,7 @@ namespace Worksheet.Views
         {
             InitializeComponent();
             ToolbarControl.HistogramPlotButtonClicked += Toolbar_HistogramPlotButtonClicked;
-            ToolbarControl.LoadHistogramConfigButtonClicked += Toolbar_LoadHistogramConfigButtonClicked;
+            ToolbarControl.LoadConfigButtonClicked += Toolbar_LoadConfigButtonClicked;
             ToolbarControl.ClearMemoryButtonClicked += Toolbar_ClearMemoryButtonClicked;
             ToolbarControl.PseudocolorPlotButtonClicked += Toolbar_PseudocolorPlotButtonClicked;
             ToolbarControl.SpectralRibbonPlotButtonClicked += Toolbar_SpectralRibbonPlotButtonClicked;
@@ -52,9 +52,9 @@ namespace Worksheet.Views
             WorksheetGridControl.AddPlot(PlotType.Histogram);
         }
 
-        private void Toolbar_LoadHistogramConfigButtonClicked(object? sender, System.EventArgs e)
+        private void Toolbar_LoadConfigButtonClicked(object? sender, System.EventArgs e)
         {
-            WorksheetGridControl.LoadLoafConfig();
+            WorksheetGridControl.LoadConfig();
         }
 
         private void Toolbar_ClearMemoryButtonClicked(object? sender, System.EventArgs e)

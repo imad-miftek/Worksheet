@@ -186,7 +186,7 @@ namespace Worksheet.Views
             AddPlotToWorksheet(plot, plotView, plotView?.Settings);
         }
 
-        public void LoadLoafConfig()
+        public void LoadConfig()
         {
             double worksheetWidth = WorksheetScrollViewer.ViewportWidth > 0
                 ? WorksheetScrollViewer.ViewportWidth
@@ -209,6 +209,8 @@ namespace Worksheet.Views
 
             // Row 2+: histograms for all channels
             AddHistogramGrid(histStartY, worksheetWidth);
+            WorksheetScrollViewer.ScrollToVerticalOffset(Math.Max(0, startY - LayoutMargin));
+            WorksheetScrollViewer.ScrollToHorizontalOffset(0);
         }
 
         private void AddConfiguredPseudocolor(double x, double y, string xName, string yName)
@@ -416,6 +418,7 @@ namespace Worksheet.Views
             WorksheetGridContainer.Children.Add(container.Container);
             Panel.SetZIndex(container.Container, _nextZIndex++);
             _plotItems.Add(plotItem);
+            EnsureWorksheetBoundsIfExceeded(container.Container);
             _selectionManager.Select(plotItem);
             }
             catch (Exception ex)
@@ -490,6 +493,7 @@ namespace Worksheet.Views
             WorksheetGridContainer.Children.Add(container.Container);
             Panel.SetZIndex(container.Container, _nextZIndex++);
             _plotItems.Add(plotItem);
+            EnsureWorksheetBoundsIfExceeded(container.Container);
             _selectionManager.Select(plotItem);
             }
             catch (Exception ex)
@@ -501,6 +505,32 @@ namespace Worksheet.Views
         public void SetStreamingEnabled(bool enabled)
         {
             _viewportSession.SetStreamingEnabled(enabled);
+        }
+
+        private void EnsureWorksheetBoundsIfExceeded(FrameworkElement item)
+        {
+            double left = Canvas.GetLeft(item);
+            double top = Canvas.GetTop(item);
+
+            if (double.IsNaN(left))
+                left = 0;
+            if (double.IsNaN(top))
+                top = 0;
+
+            double itemWidth = item.Width > 0 ? item.Width : item.ActualWidth;
+            double itemHeight = item.Height > 0 ? item.Height : item.ActualHeight;
+            double requiredWidth = left + itemWidth + LayoutMargin;
+            double requiredHeight = top + itemHeight + LayoutMargin;
+            double currentWidth = double.IsNaN(WorksheetGridContainer.Width) ? 0 : WorksheetGridContainer.Width;
+            double currentHeight = double.IsNaN(WorksheetGridContainer.Height) ? 0 : WorksheetGridContainer.Height;
+
+            if (requiredWidth <= currentWidth && requiredHeight <= currentHeight)
+                return;
+
+            if (requiredWidth > currentWidth)
+                WorksheetGridContainer.Width = requiredWidth;
+            if (requiredHeight > currentHeight)
+                WorksheetGridContainer.Height = requiredHeight;
         }
 
         public void ToggleStreaming()

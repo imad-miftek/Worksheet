@@ -10,21 +10,26 @@ namespace Worksheet.Views.PlotViews.Dialogs
         private readonly List<CheckBox> _channelCheckBoxes = new();
 
         public OscilloscopePropertiesDialog(int channelCount, IReadOnlyList<int> selectedChannelIndices)
+            : this(CreateDefaultChannelLabels(channelCount), selectedChannelIndices)
+        {
+        }
+
+        public OscilloscopePropertiesDialog(IReadOnlyList<string> channelLabels, IReadOnlyList<int> selectedChannelIndices)
         {
             InitializeComponent();
 
-            if (channelCount <= 0)
-                channelCount = 1;
+            if (channelLabels == null || channelLabels.Count == 0)
+                channelLabels = CreateDefaultChannelLabels(1);
 
             var selected = new HashSet<int>(selectedChannelIndices ?? []);
             if (selected.Count == 0)
                 selected.Add(0);
 
-            for (int i = 0; i < channelCount; i++)
+            for (int i = 0; i < channelLabels.Count; i++)
             {
                 var checkBox = new CheckBox
                 {
-                    Content = $"Channel {i}",
+                    Content = channelLabels[i],
                     Tag = i,
                     IsChecked = selected.Contains(i),
                     Margin = new Thickness(0, i == 0 ? 0 : 4, 0, 0)
@@ -51,6 +56,16 @@ namespace Worksheet.Views.PlotViews.Dialogs
 
             SelectedChannelIndices = selected;
             DialogResult = true;
+        }
+
+        private static IReadOnlyList<string> CreateDefaultChannelLabels(int channelCount)
+        {
+            if (channelCount <= 0)
+                channelCount = 1;
+
+            return Enumerable.Range(0, channelCount)
+                .Select(i => $"Channel {i}")
+                .ToArray();
         }
     }
 }

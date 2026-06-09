@@ -4,6 +4,8 @@ namespace Worksheet.Models
 {
     public class PlotSettings
     {
+        public const int DefaultOscilloscopeChannelCount = 51;
+
         public Guid Id { get; } = Guid.NewGuid();
         public PlotType PlotType { get; set; }
         public int BinCount { get; set; } = 256;
@@ -13,7 +15,7 @@ namespace Worksheet.Models
         public AxisScaleType YAxisScaleType { get; set; } = AxisScaleType.Linear;
         public double MinValue { get; set; } = 0;
         public double MaxValue { get; set; } = 100_000_000;
-        public int OscilloscopeChannelCount { get; set; } = 4;
+        public int OscilloscopeChannelCount { get; set; } = DefaultOscilloscopeChannelCount;
         public int[] OscilloscopeChannelIndices { get; set; } = [0];
 
         public int GetBinCount()

@@ -1,8 +1,10 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using Worksheet.Models;
+using Worksheet.Services;
 using Worksheet.Views.PlotViews;
 using Worksheet.Views.PlotViews.Dialogs;
 
@@ -39,9 +41,13 @@ namespace Worksheet.Views.PlotViews.ContextMenus
         {
             var selected = oscilloscopeView.Settings.OscilloscopeChannelIndices;
             int maxSelectedIndex = selected.Length > 0 ? selected.Max() : 0;
-            int channelCount = Math.Max(oscilloscopeView.Settings.OscilloscopeChannelCount, maxSelectedIndex + 1);
+            var configuredChannelNames = FeatureSelectionStrategy.AllChannelNames;
+            int channelCount = Math.Max(
+                Math.Max(oscilloscopeView.Settings.OscilloscopeChannelCount, configuredChannelNames.Count),
+                maxSelectedIndex + 1);
 
-            var dialog = new OscilloscopePropertiesDialog(channelCount, selected)
+            var channelLabels = BuildChannelLabels(channelCount, configuredChannelNames);
+            var dialog = new OscilloscopePropertiesDialog(channelLabels, selected)
             {
                 Owner = Window.GetWindow(plotItem.Container)
             };
@@ -52,6 +58,20 @@ namespace Worksheet.Views.PlotViews.ContextMenus
                 oscilloscopeView.Settings.OscilloscopeChannelCount = Math.Max(channelCount, dialog.SelectedChannelIndices.Max() + 1);
                 oscilloscopeView.InvalidateStatic(plotItem.Plot);
             }
+        }
+
+        private static string[] BuildChannelLabels(int channelCount, IReadOnlyList<string> configuredChannelNames)
+        {
+            var labels = new string[channelCount];
+            for (int i = 0; i < labels.Length; i++)
+            {
+                string name = i < configuredChannelNames.Count ? configuredChannelNames[i] : string.Empty;
+                labels[i] = string.IsNullOrWhiteSpace(name)
+                    ? $"Channel {i}"
+                    : $"{i}: {name}";
+            }
+
+            return labels;
         }
     }
 }
