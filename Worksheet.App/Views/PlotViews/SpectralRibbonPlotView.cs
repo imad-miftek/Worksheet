@@ -27,7 +27,7 @@ namespace Worksheet.Views.PlotViews
             if (channelCount <= 0)
                 channelCount = 1;
 
-            plot.Plot.DataBackground.Color = ScottPlot.Color.FromHex("#FFFFFFFF");
+            plot.Plot.DataBackground.Color = ScottPlot.Color.FromARGB(0);
             ApplyAxesAndTicks(plot, bins, channelCount, resetLimits: true);
             _lastAppliedConfig = SpectralConfigSnapshot.Create(Settings, bins, channelCount);
         }
@@ -53,7 +53,7 @@ namespace Worksheet.Views.PlotViews
                 return;
             }
 
-            surface.PresentBitmap(spectralData.PixelBuffer, spectralData.ChannelCount, spectralData.Bins);
+            surface.PresentBitmap(spectralData.PixelBuffer, spectralData.PixelWidth, spectralData.PixelHeight);
         }
 
         public override void Clear(WpfPlot plot)
@@ -128,11 +128,6 @@ namespace Worksheet.Views.PlotViews
             plot.Plot.Axes.Bottom.TickLabelStyle.OffsetY = 3;  // Try: 0, 5, 10, -5, -10
             plot.Plot.Axes.Bottom.MinimumSize = 50;
 
-            // Use minor grid lines to align with ribbon edges, and hide minor tick marks
-            plot.Plot.Grid.XAxisStyle.MajorLineStyle.IsVisible = false;
-            plot.Plot.Grid.XAxisStyle.MinorLineStyle.IsVisible = true;
-            plot.Plot.Grid.XAxisStyle.MinorLineStyle.Color = ScottPlot.Colors.Black.WithOpacity(.15);
-            plot.Plot.Grid.XAxisStyle.MinorLineStyle.Width = 1;
             plot.Plot.Axes.Bottom.MinorTickStyle.Length = 0;
             plot.Plot.Axes.Bottom.MinorTickStyle.Width = 0;
         }
@@ -145,16 +140,11 @@ namespace Worksheet.Views.PlotViews
                     plot.Plot.Axes.Left.TickGenerator = LinearAxisItem.CreateDataTickGenerator(Settings);
                     if (resetLimits)
                         plot.Plot.Axes.SetLimitsY(0, bins);
-                    plot.Plot.Grid.MinorLineColor = ScottPlot.Colors.Black.WithOpacity(.05);
-                    plot.Plot.Grid.MinorLineWidth = 1;
                     break;
                 case AxisScaleType.Logarithmic:
                     plot.Plot.Axes.Left.TickGenerator = LogarithmicAxisItem.CreateDataTickGenerator(Settings);
                     if (resetLimits)
                         plot.Plot.Axes.SetLimitsY(0, bins);
-                    plot.Plot.Grid.MajorLineColor = ScottPlot.Colors.Black.WithOpacity(.15);
-                    plot.Plot.Grid.MinorLineColor = ScottPlot.Colors.Black.WithOpacity(.05);
-                    plot.Plot.Grid.MinorLineWidth = 1;
                     break;
                 default:
                     break;

@@ -102,7 +102,14 @@ Important semantics:
 - Oldest events are overwritten when the rolling window is full.
 - Gate event indices are relative to the current logical window, not absolute history.
 
-Default mock acquisition settings come from `Services/CHASM/ChasmOptions.cs`:
+The raw signal axis is layout-driven in `Worksheet.Core`:
+
+- `SignalLayout.Default` preserves the current `1 laser x 1 feature x 51 connected channels` shape.
+- Larger event shapes such as `6 lasers x 9 features x 60 channels` map to flat column indices with `SignalLayout.ToIndex(laser, feature, channel)`.
+- `DataSource` still stores signal values column-wise as `signalColumns[signalIndex][eventIndex]`, so selected Laser/Feature/Channel combinations can be read directly.
+- `EventBatchConverter<TEvent>` converts DAQ-style event object batches into `ColumnMajorEventBatch` payloads for the fast ingestion path.
+
+Default mock acquisition settings come from `Worksheet.Core/Services/CHASM/ChasmOptions.cs`:
 
 - Acquisition interval: `25 ms`
 - Batch size: `500`
@@ -129,6 +136,28 @@ Useful project documents:
 - `docs/CODING_STANDARDS.md`: local coding conventions
 - `docs/AI_AGENT_POLICY.md`: repo-specific agent guidance
 
+### Profiling
+
+Focused Core processing profile tests live in `Worksheet.Tests`.
+
+```powershell
+dotnet test .\Worksheet.Tests\Worksheet.Tests.csproj --no-restore --filter "Category=Profile" --logger "console;verbosity=detailed"
+```
+
+These tests report full-window and delta processing timings for histogram, pseudocolor, and spectral ribbon processing, plus WPF plot-view render-method timings. They do not enforce machine-specific speed thresholds. Render timings measure the app's `PlotView.Render()` paths on an STA thread, not full dispatcher scheduling or monitor frame latency.
+
+For ingestion-only throughput and raw payload bandwidth:
+
+```powershell
+dotnet test .\Worksheet.Tests\Worksheet.Tests.csproj --no-restore --filter "FullyQualifiedName~IngestionProfileTests" --logger "console;verbosity=detailed"
+```
+
+For real CHASM channel/consumer ingestion throughput:
+
+```powershell
+dotnet test .\Worksheet.Tests\Worksheet.Tests.csproj --no-restore --filter "FullyQualifiedName~ChasmPipelineProfileTests" --logger "console;verbosity=detailed"
+```
+
 ## Current State
 
-This repository appears to be an actively evolving prototype for interactive multi-plot visualization. The core desktop workflow is in place, and the docs already call out known performance constraints such as full recompute behavior, lock contention in spectral processing, allocation pressure in pseudocolor processing, and synchronous UI render dispatch.
+This repository appears to be an actively evolving prototype for interactive multi-plot visualization. The core desktop workflow is in place, with current audit notes covering ingestion throughput, live snapshot tradeoffs, incremental processing, bitmap-based rendering, and remaining UI-thread scalability risks.

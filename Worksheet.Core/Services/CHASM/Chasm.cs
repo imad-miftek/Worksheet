@@ -6,6 +6,8 @@ namespace Worksheet.Services
 {
     public sealed class Chasm : IDisposable
     {
+        private static readonly TimeSpan StopWaitTimeout = TimeSpan.FromMilliseconds(250);
+
         private readonly IProducer _producer;
         private readonly IConsumer _consumer;
         private readonly IChasmDataSource _dataSource;
@@ -23,6 +25,8 @@ namespace Worksheet.Services
         public bool IsStreamingEnabled { get; private set; }
 
         public long DataVersion => _dataSource.DataVersion;
+
+        public int WindowCapacity => _dataSource.WindowCapacity;
 
         public void StartStreaming()
         {
@@ -48,16 +52,53 @@ namespace Worksheet.Services
 
             _producer.Stop();
             _consumerCts?.Cancel();
+            ObserveStoppedTask(_consumerTask, "Chasm.StopStreaming");
 
             // Drain any queued batches so restart doesn't replay stale data.
             while (_producer.Reader.TryRead(out _)) { }
+
+            _consumerCts?.Dispose();
+            _consumerCts = null;
+            _consumerTask = null;
         }
 
         public void ClearMemory() => _dataSource.ClearMemory();
 
+        public void SetWindowCapacity(int windowCapacity) => _dataSource.SetWindowCapacity(windowCapacity);
+
         public void Dispose()
         {
             StopStreaming();
+            _consumerCts?.Dispose();
+
+            if (_producer is IDisposable disposableProducer)
+                disposableProducer.Dispose();
+        }
+
+        private static void ObserveStoppedTask(Task? task, string context)
+        {
+            if (task == null)
+                return;
+
+            try
+            {
+                if (!task.Wait(StopWaitTimeout))
+                    AppLog.Error($"{context} timed out", $"timeoutMs={StopWaitTimeout.TotalMilliseconds:F0}");
+            }
+            catch (AggregateException ex) when (IsCancellationOnly(ex))
+            {
+            }
+        }
+
+        private static bool IsCancellationOnly(AggregateException ex)
+        {
+            foreach (var inner in ex.Flatten().InnerExceptions)
+            {
+                if (inner is not OperationCanceledException)
+                    return false;
+            }
+
+            return true;
         }
     }
 }

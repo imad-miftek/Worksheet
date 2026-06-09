@@ -14,6 +14,7 @@ namespace Worksheet.Models
         Border DragLayer,      // Receives mouse events for dragging
         Grid Host,             // Holds dynamic surface + plot + overlay
         WpfPlot StaticPlot,
+        Border DataRectBacking,
         DynamicBitmap DynamicSurface
     );
 }

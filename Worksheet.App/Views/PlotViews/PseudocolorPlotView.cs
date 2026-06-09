@@ -32,7 +32,7 @@ namespace Worksheet.Views.PlotViews
 
         public override void Configure(WpfPlot plot)
         {
-            plot.Plot.DataBackground.Color = ScottPlot.Color.FromHex("#FFFFFFFF");
+            plot.Plot.DataBackground.Color = ScottPlot.Color.FromARGB(0);
             ApplyAxisTicks(plot, resetLimits: true);
             ApplyAxisLabels(plot);
             _lastAppliedConfig = PlotConfigSnapshot.From(Settings);
@@ -57,7 +57,7 @@ namespace Worksheet.Views.PlotViews
                 return;
             }
 
-            surface.PresentBitmap(heatmapData.PixelBuffer, heatmapData.Bins, heatmapData.Bins);
+            surface.PresentBitmap(heatmapData.PixelBuffer, heatmapData.PixelWidth, heatmapData.PixelHeight);
         }
 
         public override void Clear(WpfPlot plot)
@@ -169,8 +169,6 @@ namespace Worksheet.Views.PlotViews
                     plot.Plot.Axes.SetLimitsY(0, settings.GetBinCount());
             }
 
-            plot.Plot.Grid.MinorLineColor = ScottPlot.Colors.Black.WithOpacity(.05);
-            plot.Plot.Grid.MinorLineWidth = 1;
         }
 
         private static void ApplyLogarithmicTicks(WpfPlot plot, AxisOrientation orientation, PlotSettings settings, bool resetLimits)
@@ -189,13 +187,12 @@ namespace Worksheet.Views.PlotViews
                     plot.Plot.Axes.SetLimitsY(0, settings.GetBinCount());
             }
 
-            plot.Plot.Grid.MajorLineColor = ScottPlot.Colors.Black.WithOpacity(.15);
-            plot.Plot.Grid.MinorLineColor = ScottPlot.Colors.Black.WithOpacity(.05);
-            plot.Plot.Grid.MinorLineWidth = 1;
         }
 
         private readonly record struct PlotConfigSnapshot(
             int BinCount,
+            int XFeature,
+            int YFeature,
             AxisScaleType XAxisScaleType,
             AxisScaleType YAxisScaleType,
             double MinValue,
@@ -204,6 +201,8 @@ namespace Worksheet.Views.PlotViews
             public static PlotConfigSnapshot From(PlotSettings settings) =>
                 new(
                     settings.GetBinCount(),
+                    settings.XFeature,
+                    settings.YFeature,
                     settings.XAxisScaleType,
                     settings.YAxisScaleType,
                     settings.MinValue,

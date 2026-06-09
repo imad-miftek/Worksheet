@@ -2,6 +2,10 @@ using System;
 
 namespace Worksheet.Services
 {
+    /// <summary>
+    /// Live view over multiple retained signal columns in <see cref="DataSource"/>.
+    /// Metadata is captured atomically, but <see cref="ChannelValues"/> references backing ring buffers.
+    /// </summary>
     public readonly record struct MultiChannelWindowSnapshot(
         double[][] ChannelValues,
         int StartIndex,
@@ -15,21 +19,33 @@ namespace Worksheet.Services
 
         public int PhysicalIndexAt(int logicalIndex)
         {
+            if ((uint)logicalIndex >= (uint)Count)
+                throw new ArgumentOutOfRangeException(nameof(logicalIndex), logicalIndex, $"Index must be in [0, {Count - 1}].");
+
             return (StartIndex + logicalIndex) % Capacity;
         }
 
         public int PhysicalIndexForSequence(long sequence)
         {
+            if (sequence < StartSequence || sequence >= EndSequence)
+                throw new ArgumentOutOfRangeException(nameof(sequence), sequence, $"Sequence must be in [{StartSequence}, {EndSequence - 1}].");
+
             return PhysicalIndexAt((int)(sequence - StartSequence));
         }
 
         public double ValueAt(int channelIndex, long sequence)
         {
+            if ((uint)channelIndex >= (uint)ChannelValues.Length)
+                throw new ArgumentOutOfRangeException(nameof(channelIndex), channelIndex, $"Channel index must be in [0, {ChannelValues.Length - 1}].");
+
             return ChannelValues[channelIndex][PhysicalIndexForSequence(sequence)];
         }
 
         public ChannelWindowSnapshot Channel(int channelIndex)
         {
+            if ((uint)channelIndex >= (uint)ChannelValues.Length)
+                throw new ArgumentOutOfRangeException(nameof(channelIndex), channelIndex, $"Channel index must be in [0, {ChannelValues.Length - 1}].");
+
             return new ChannelWindowSnapshot(
                 Values: ChannelValues[channelIndex],
                 StartIndex: StartIndex,

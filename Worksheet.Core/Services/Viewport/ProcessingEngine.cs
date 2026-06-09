@@ -46,13 +46,14 @@ namespace Worksheet.Services
                 foreach (var plotSettings in settings)
                 {
                     activePlotIds.Add(plotSettings.Id);
-                    var fingerprint = SettingsFingerprint.From(plotSettings, dataVersion);
+                    var targetSize = _dataStore.GetRenderTargetSize(plotSettings.Id);
+                    var fingerprint = SettingsFingerprint.From(plotSettings, dataVersion, targetSize);
 
                     if (_lastProcessedSettings.TryGetValue(plotSettings.Id, out var previous) && previous.Equals(fingerprint))
                         continue;
 
                     var stopwatch = Stopwatch.StartNew();
-                    var processed = _plotProcessor.Process(plotSettings);
+                    var processed = _plotProcessor.Process(plotSettings, targetSize);
                     stopwatch.Stop();
                     RecordComputeTime(plotSettings.PlotType, stopwatch.Elapsed.TotalMilliseconds);
 
@@ -181,9 +182,11 @@ namespace Worksheet.Services
             AxisScaleType YAxisScaleType,
             double MinValue,
             double MaxValue,
+            int PixelWidth,
+            int PixelHeight,
             long DataVersion)
         {
-            public static SettingsFingerprint From(PlotSettings settings, long dataVersion) =>
+            public static SettingsFingerprint From(PlotSettings settings, long dataVersion, RenderTargetSize targetSize) =>
                 new(
                     settings.PlotType,
                     settings.GetBinCount(),
@@ -193,6 +196,8 @@ namespace Worksheet.Services
                     settings.YAxisScaleType,
                     settings.MinValue,
                     settings.MaxValue,
+                    targetSize.PixelWidth,
+                    targetSize.PixelHeight,
                     dataVersion);
         }
 

@@ -51,14 +51,13 @@ namespace Worksheet.Views.Support
                 var r = last.DataRect;
 
                 // Convert pixels -> WPF DIPs (DPI-aware)
-                var dpi = VisualTreeHelper.GetDpi(plot);
-                double pxToDipX = 1.0 / dpi.DpiScaleX;
-                double pxToDipY = 1.0 / dpi.DpiScaleY;
+                var dpi = DpiContext.From(plot);
+                var dataRectDip = dpi.PixelsToDips(new Rect(r.Left, r.Top, r.Width, r.Height));
 
-                double left = r.Left * pxToDipX;
-                double right = r.Right * pxToDipX;
-                double top = r.Top * pxToDipY;
-                double bottom = r.Bottom * pxToDipY;
+                double left = dataRectDip.Left;
+                double right = dataRectDip.Right;
+                double top = dataRectDip.Top;
+                double bottom = dataRectDip.Bottom;
 
                 PlaceThumb(tl, left, top);
                 PlaceThumb(tr, right, top);
@@ -174,8 +173,8 @@ namespace Worksheet.Views.Support
 
             return new Thumb
             {
-                Width = 6,
-                Height = 6,
+                Width = 8,
+                Height = 8,
                 Cursor = cursor,
                 Template = template
             };

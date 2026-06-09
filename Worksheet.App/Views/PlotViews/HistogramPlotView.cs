@@ -40,7 +40,7 @@ namespace Worksheet.Views.PlotViews
 
         public override void Configure(WpfPlot plot)
         {
-            plot.Plot.DataBackground.Color = ScottPlot.Color.FromHex("#FFFFFFFF");
+            plot.Plot.DataBackground.Color = ScottPlot.Color.FromARGB(0);
             plot.Plot.Axes.Margins(bottom: 0);
             plot.Plot.Axes.SetLimitsY(0, 1);
             plot.Plot.YLabel("Frequency");
@@ -149,9 +149,8 @@ namespace Worksheet.Views.PlotViews
             if (!TryGetBitmapSurface(out var surface))
                 return;
 
-            var dataRect = surface.DataRect;
-            int width = Math.Max(1, (int)Math.Ceiling(dataRect.Width));
-            int height = Math.Max(1, (int)Math.Ceiling(dataRect.Height));
+            int width = surface.TargetWidth;
+            int height = surface.TargetHeight;
 
             if (width <= 0 || height <= 0)
             {

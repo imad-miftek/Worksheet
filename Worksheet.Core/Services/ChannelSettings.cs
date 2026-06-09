@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
-using System.Text.RegularExpressions;
 using Worksheet.Models;
 
 namespace Worksheet.Services
@@ -14,7 +13,9 @@ namespace Worksheet.Services
 
         public List<ChannelInfo> Channels { get; private set; } = new List<ChannelInfo>();
         public List<ChannelInfo> AllChannels { get; private set; } = new List<ChannelInfo>();
-        public int ChannelCount => AllChannels.Count;
+        public int SourceChannelCount => AllChannels.Count;
+        public int ConnectedChannelCount => Channels.Count;
+        public int ChannelCount => ConnectedChannelCount;
 
         public bool LoadFromJsonFile(string jsonFilePath)
         {
@@ -37,6 +38,9 @@ namespace Worksheet.Services
 
         private bool LoadFromJson(string jsonFilePath)
         {
+            Channels.Clear();
+            AllChannels.Clear();
+
             var jsonText = File.ReadAllText(jsonFilePath);
             var jsonDoc = JsonDocument.Parse(jsonText);
 
@@ -46,8 +50,9 @@ namespace Worksheet.Services
                 return false;
             }
 
-            // Parse channels in order (don't sort - keep JSON order to match DataSource)
-            int id = 0;
+            // Parse source slots in file order. Connected channels get compact event-column IDs.
+            int sourceSlotId = 0;
+            int connectedId = 0;
             foreach (var property in channelsElement.EnumerateObject())
             {
                 var key = property.Name;
@@ -55,16 +60,16 @@ namespace Worksheet.Services
 
                 if (!string.IsNullOrEmpty(value))
                 {
-                    var channelInfo = new ChannelInfo(id, key, value, value);
-                    AllChannels.Add(channelInfo);
+                    AllChannels.Add(new ChannelInfo(sourceSlotId, key, value, value));
 
                     // Only add connected channels
                     if (!Disconnected.Contains(value.ToLower()))
                     {
-                        Channels.Add(channelInfo);
+                        Channels.Add(new ChannelInfo(connectedId, key, value, value));
+                        connectedId++;
                     }
 
-                    id++;
+                    sourceSlotId++;
                 }
             }
 
@@ -89,18 +94,29 @@ namespace Worksheet.Services
 
         public List<string> GetAdcChannelsFiltered()
         {
-            return Channels
-                .Where(c => IsNumericWavelength(c.Wavelength))
+            return GetFilteredNumericChannelsSorted()
                 .Select(c => c.Wavelength)
                 .ToList();
         }
 
         public List<int> GetAdcIndicesFiltered()
         {
-            return Channels
-                .Where(c => IsNumericWavelength(c.Wavelength))
+            return GetFilteredNumericChannelsSorted()
                 .Select(c => c.Id)
                 .ToList();
+        }
+
+        public string GetConnectedChannelName(int channelId)
+        {
+            var channel = Channels.FirstOrDefault(c => c.Id == channelId);
+            return channel?.Wavelength ?? string.Empty;
+        }
+
+        private IEnumerable<ChannelInfo> GetFilteredNumericChannelsSorted()
+        {
+            return Channels
+                .Where(c => IsNumericWavelength(c.Wavelength))
+                .OrderBy(c => c.Wavelength, StringComparer.Ordinal);
         }
 
         private bool IsNumericWavelength(string wavelength)
@@ -117,36 +133,6 @@ namespace Worksheet.Services
             catch
             {
                 return false;
-            }
-        }
-
-        private class NaturalChannelComparer : IComparer<string>
-        {
-            public int Compare(string? x, string? y)
-            {
-                x ??= string.Empty;
-                y ??= string.Empty;
-
-                var xParts = GetSortKey(x);
-                var yParts = GetSortKey(y);
-
-                int prefixCompare = string.Compare(xParts.prefix, yParts.prefix, StringComparison.Ordinal);
-                if (prefixCompare != 0)
-                    return prefixCompare;
-
-                return xParts.number.CompareTo(yParts.number);
-            }
-
-            private (string prefix, int number) GetSortKey(string text)
-            {
-                var match = Regex.Match(text, @"\.(\d+)$");
-                if (match.Success)
-                {
-                    var prefix = text.Substring(0, match.Index);
-                    var number = int.Parse(match.Groups[1].Value);
-                    return (prefix, number);
-                }
-                return (text, 0);
             }
         }
     }

@@ -1,4 +1,5 @@
 using System;
+using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -14,6 +15,15 @@ namespace Worksheet.Views.Support
 
         public PlotContainer CreateContainer(WpfPlot plot, int childIndex, double worksheetWidth)
         {
+            var plotBacking = new Border
+            {
+                Background = Brushes.White,
+                HorizontalAlignment = HorizontalAlignment.Left,
+                VerticalAlignment = VerticalAlignment.Top,
+                Visibility = Visibility.Collapsed,
+                IsHitTestVisible = false
+            };
+
             var dynamicSurface = new DynamicBitmap
             {
                 Width = plot.Width,
@@ -33,13 +43,15 @@ namespace Worksheet.Views.Support
                 Width = plot.Width,
                 Height = plot.Height
             };
-            host.Children.Add(plot);
+            host.Children.Add(plotBacking);
             host.Children.Add(dynamicSurface);
+            host.Children.Add(plot);
             host.Children.Add(overlay);
 
-            Panel.SetZIndex(plot, 0);
+            Panel.SetZIndex(plotBacking, 0);
             Panel.SetZIndex(dynamicSurface, 1);
-            Panel.SetZIndex(overlay, 2);
+            Panel.SetZIndex(plot, 2);
+            Panel.SetZIndex(overlay, 3);
 
             // Outer container canvas (draggable placement on worksheet)
             var container = new Canvas
@@ -77,7 +89,7 @@ namespace Worksheet.Views.Support
                 dragLayer.Height = host.Height;
             };
 
-            return new PlotContainer(container, overlay, dragLayer, host, plot, dynamicSurface);
+            return new PlotContainer(container, overlay, dragLayer, host, plot, plotBacking, dynamicSurface);
         }
     }
 }

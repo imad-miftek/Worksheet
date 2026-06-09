@@ -7,25 +7,31 @@ namespace Worksheet.Services
 {
     public sealed class MockProducer : IProducer, IDisposable
     {
-        private const int ChannelCount = 60;
         private const int PopulationCount = 4;
         private const double MaxValue = 100_000_000d;
+        private const int MaxThroughputBurstBatches = 16;
+        private static readonly TimeSpan StopWaitTimeout = TimeSpan.FromMilliseconds(250);
+        private static readonly TimeSpan MaxThroughputRestInterval = TimeSpan.FromMilliseconds(1);
 
         private readonly ChasmOptions _options;
-        private readonly Channel<EventBatch> _channel;
+        private readonly Channel<IEventBatch> _channel;
+        private readonly int _signalCount;
 
         private CancellationTokenSource? _cts;
         private Task? _task;
         private volatile bool _running;
 
         private readonly Random _rng;
-        private readonly double[,] _logMeans = new double[ChannelCount, PopulationCount];
-        private readonly double[,] _logSigmas = new double[ChannelCount, PopulationCount];
+        private readonly double[,] _logMeans;
+        private readonly double[,] _logSigmas;
         private readonly double[] _populationWeights = new double[PopulationCount];
 
         public MockProducer(ChasmOptions? options = null)
         {
             _options = options ?? ChasmOptions.Default;
+            _signalCount = _options.SignalLayout.SignalCount;
+            _logMeans = new double[_signalCount, PopulationCount];
+            _logSigmas = new double[_signalCount, PopulationCount];
 
             var bounded = new BoundedChannelOptions(_options.ChannelCapacityBatches)
             {
@@ -33,13 +39,13 @@ namespace Worksheet.Services
                 SingleReader = true,
                 SingleWriter = true,
             };
-            _channel = Channel.CreateBounded<EventBatch>(bounded);
+            _channel = Channel.CreateBounded<IEventBatch>(bounded);
 
             _rng = new Random(_options.Seed);
             InitializePopulationModel();
         }
 
-        public ChannelReader<EventBatch> Reader => _channel.Reader;
+        public ChannelReader<IEventBatch> Reader => _channel.Reader;
 
         public void Start()
         {
@@ -61,11 +67,50 @@ namespace Worksheet.Services
 
             // Prevent stale batches from being consumed after restart.
             while (_channel.Reader.TryRead(out _)) { }
+
+            ObserveStoppedTask(_task, "MockProducer.Stop");
+            _cts?.Dispose();
+            _cts = null;
+            _task = null;
         }
 
         public void Dispose() => Stop();
 
         private async Task RunAsync(CancellationToken token)
+        {
+            if (_options.ThroughputMode == ProducerThroughputMode.MaxThroughput)
+                await RunMaxThroughputAsync(token).ConfigureAwait(false);
+            else
+                await RunFixedRateAsync(token).ConfigureAwait(false);
+        }
+
+        private static void ObserveStoppedTask(Task? task, string context)
+        {
+            if (task == null)
+                return;
+
+            try
+            {
+                if (!task.Wait(StopWaitTimeout))
+                    AppLog.Error($"{context} timed out", $"timeoutMs={StopWaitTimeout.TotalMilliseconds:F0}");
+            }
+            catch (AggregateException ex) when (IsCancellationOnly(ex))
+            {
+            }
+        }
+
+        private static bool IsCancellationOnly(AggregateException ex)
+        {
+            foreach (var inner in ex.Flatten().InnerExceptions)
+            {
+                if (inner is not OperationCanceledException)
+                    return false;
+            }
+
+            return true;
+        }
+
+        private async Task RunFixedRateAsync(CancellationToken token)
         {
             try
             {
@@ -88,16 +133,49 @@ namespace Worksheet.Services
             }
         }
 
+        private async Task RunMaxThroughputAsync(CancellationToken token)
+        {
+            try
+            {
+                int batchesSinceRest = 0;
+                while (!token.IsCancellationRequested)
+                {
+                    if (!_running)
+                    {
+                        await Task.Delay(1, token).ConfigureAwait(false);
+                        continue;
+                    }
+
+                    var batch = GenerateColumnMajorBatch(_options.BatchSize);
+                    _channel.Writer.TryWrite(batch);
+
+                    batchesSinceRest++;
+                    if (batchesSinceRest >= MaxThroughputBurstBatches)
+                    {
+                        batchesSinceRest = 0;
+                        await Task.Delay(MaxThroughputRestInterval, token).ConfigureAwait(false);
+                    }
+                }
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            catch (Exception ex)
+            {
+                AppLog.Exception(ex, "MockProducer.RunMaxThroughputAsync");
+            }
+        }
+
         private EventBatch GenerateBatch(int count)
         {
-            var channels = new double[ChannelCount][];
-            for (int c = 0; c < ChannelCount; c++)
+            var channels = new double[_signalCount][];
+            for (int c = 0; c < _signalCount; c++)
                 channels[c] = new double[count];
 
             for (int e = 0; e < count; e++)
             {
                 int pop = SamplePopulation();
-                for (int c = 0; c < ChannelCount; c++)
+                for (int c = 0; c < _signalCount; c++)
                 {
                     double logMean = _logMeans[c, pop];
                     double logSigma = _logSigmas[c, pop];
@@ -117,7 +195,37 @@ namespace Worksheet.Services
                 }
             }
 
-            return new EventBatch(count, channels);
+            return new EventBatch(count, channels, _options.SignalLayout);
+        }
+
+        private ColumnMajorEventBatch GenerateColumnMajorBatch(int count)
+        {
+            var values = new double[_signalCount * count];
+
+            for (int e = 0; e < count; e++)
+            {
+                int pop = SamplePopulation();
+                for (int c = 0; c < _signalCount; c++)
+                {
+                    double logMean = _logMeans[c, pop];
+                    double logSigma = _logSigmas[c, pop];
+
+                    double z = NextStandardNormal();
+                    double log10Value = logMean + logSigma * z;
+                    double value = Math.Pow(10, log10Value);
+
+                    if (double.IsNaN(value) || double.IsInfinity(value))
+                        value = MaxValue;
+                    else if (value < 0)
+                        value = 0;
+                    else if (value > MaxValue)
+                        value = MaxValue;
+
+                    values[(c * count) + e] = value;
+                }
+            }
+
+            return new ColumnMajorEventBatch(count, values, _options.SignalLayout);
         }
 
         private void InitializePopulationModel()
@@ -131,12 +239,12 @@ namespace Worksheet.Services
             for (int p = 0; p < PopulationCount; p++)
                 _populationWeights[p] /= sum;
 
-            var distinctPeakCounts = new int[ChannelCount];
-            for (int i = 0; i < ChannelCount; i++)
+            var distinctPeakCounts = new int[_signalCount];
+            for (int i = 0; i < _signalCount; i++)
                 distinctPeakCounts[i] = 1 + (i % 4);
             Shuffle(distinctPeakCounts);
 
-            for (int c = 0; c < ChannelCount; c++)
+            for (int c = 0; c < _signalCount; c++)
             {
                 int peakCount = distinctPeakCounts[c];
                 var (distinctMeans, distinctSigmas) = CreateDistinctPeaks(peakCount);

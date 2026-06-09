@@ -14,6 +14,7 @@ namespace Worksheet.Views
     public partial class WorksheetGrid : UserControl
     {
         private const double LayoutMargin = 10;
+        private const ChasmPreset CurrentChasmPreset = ChasmPreset.Balanced50k;
         private readonly SelectionManager<IWorksheetItem> _selectionManager;
         private readonly PlotFactory _plotFactory;
         private readonly PlotContainerFactory _containerFactory;
@@ -64,7 +65,11 @@ namespace Worksheet.Views
             _containerFactory = containerFactory;
             _thumbManager = thumbManager;
             _dragHandler = dragHandler;
-            _viewportSession = viewportSession ?? new ViewportSession(Dispatcher, System.TimeSpan.FromMilliseconds(250), System.TimeSpan.FromMilliseconds(100));
+            _viewportSession = viewportSession ?? new ViewportSession(
+                Dispatcher,
+                System.TimeSpan.FromMilliseconds(250),
+                System.TimeSpan.FromMilliseconds(100),
+                ChasmOptions.FromPreset(CurrentChasmPreset));
             _viewportSession.Start();
 
             InitializeComponent();
@@ -162,8 +167,7 @@ namespace Worksheet.Views
 
             if (indices.Count == 0)
             {
-                const int fallbackChannelCount = 60;
-                for (int i = 0; i < fallbackChannelCount; i++)
+                for (int i = 0; i < SignalLayout.DefaultChannelCount; i++)
                     AddHistogramPlotForChannel(i);
                 return;
             }
@@ -192,14 +196,14 @@ namespace Worksheet.Views
 
             // Row 1: 2 pseudocolors + 1 spectral ribbon
             AddConfiguredPseudocolor(x, startY, "QPD H", "QPD V");
-            x += 200 + LayoutMargin;
+            x += 280 + LayoutMargin;
 
             AddConfiguredPseudocolor(x, startY, "372nm", "293nm");
-            x += 200 + LayoutMargin;
+            x += 280 + LayoutMargin;
 
             AddConfiguredSpectralRibbon(x, startY);
 
-            double rowHeight = 200; // pseudocolor default height
+            double rowHeight = 280; // pseudocolor default height
             double histStartY = startY + rowHeight + LayoutMargin;
 
             // Row 2+: histograms for all channels
@@ -237,11 +241,11 @@ namespace Worksheet.Views
         {
             var indices = _viewportSession.FeatureSelection.GetXFeatureIndices(PlotType.Histogram);
             List<int> ids = indices.Count == 0
-                ? Enumerable.Range(0, 60).ToList()
+                ? Enumerable.Range(0, SignalLayout.DefaultChannelCount).ToList()
                 : indices.ToList();
 
-            const double plotWidth = 200;
-            const double plotHeight = 150;
+            const double plotWidth = 280;
+            const double plotHeight = 200;
             int plotsPerRow = Math.Max(1, (int)((worksheetWidth - LayoutMargin) / (plotWidth + LayoutMargin)));
 
             for (int i = 0; i < ids.Count; i++)
@@ -398,7 +402,7 @@ namespace Worksheet.Views
             }
 
             plotView?.AttachOverlay(container.Overlay);
-            plotView?.AttachBitmapSurface(plot, container.DynamicSurface);
+            plotView?.AttachBitmapSurface(plot, container.DynamicSurface, container.DataRectBacking);
             plotView?.AttachContextMenu(plotItem);
             _selectionManager.Register(plotItem, plotItem.OnSelect, plotItem.OnDeselect);
 
@@ -468,7 +472,7 @@ namespace Worksheet.Views
             }
 
             plotView?.AttachOverlay(container.Overlay);
-            plotView?.AttachBitmapSurface(plot, container.DynamicSurface);
+            plotView?.AttachBitmapSurface(plot, container.DynamicSurface, container.DataRectBacking);
             plotView?.AttachContextMenu(plotItem);
 
             // Register with selection manager

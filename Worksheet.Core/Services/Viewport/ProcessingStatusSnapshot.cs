@@ -2,6 +2,7 @@ namespace Worksheet.Services
 {
     public readonly record struct ProcessingStatusSnapshot(
         double EventRatePerSecond,
+        int BufferedEventCount,
         double HistogramAverageComputeMs,
         double PseudocolorAverageComputeMs,
         double SpectralRibbonAverageComputeMs,

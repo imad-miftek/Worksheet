@@ -6,10 +6,10 @@ namespace Worksheet.Services
 {
     public sealed class ChasmConsumer : IConsumer
     {
-        private readonly ChannelReader<EventBatch> _reader;
+        private readonly ChannelReader<IEventBatch> _reader;
         private readonly IChasmDataSource _dataSource;
 
-        public ChasmConsumer(ChannelReader<EventBatch> reader, IChasmDataSource dataSource)
+        public ChasmConsumer(ChannelReader<IEventBatch> reader, IChasmDataSource dataSource)
         {
             _reader = reader;
             _dataSource = dataSource;
