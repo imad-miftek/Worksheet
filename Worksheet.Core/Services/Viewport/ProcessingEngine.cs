@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
 using Worksheet.Models;
 using Worksheet.Models.Gates;
 using Worksheet.Services.Viewport.Gates;
@@ -11,13 +10,19 @@ namespace Worksheet.Services
     public class ProcessingEngine : PollingEngine
     {
         private readonly DataStore _dataStore;
-        private readonly PlotProcessor _plotProcessor;
+        private readonly PlotPipelineRegistry _pipelines;
         private readonly GateProcessor _gateProcessor;
         private readonly Func<long> _getDataVersion;
+        private readonly TimeSpan _parameterPlotInterval;
         private readonly object _processingLock = new();
         private readonly Dictionary<Guid, SettingsFingerprint> _lastProcessedSettings = new();
+        private readonly Dictionary<Guid, DateTime> _lastPlotProcessUtc = new();
         private readonly Dictionary<Guid, GateFingerprint> _lastProcessedGates = new();
+        private readonly HashSet<Guid> _activePlotIds = new();
+        private readonly HashSet<Guid> _activeGateIds = new();
+        private readonly List<Guid> _staleIds = new();
         private readonly object _metricsLock = new();
+        private DateTime _lastGateProcessUtc = DateTime.MinValue;
         private double _histComputeTotalMs;
         private long _histComputeCount;
         private double _pcComputeTotalMs;
@@ -25,13 +30,71 @@ namespace Worksheet.Services
         private double _srComputeTotalMs;
         private long _srComputeCount;
 
-        public ProcessingEngine(DataStore dataStore, PlotProcessor plotProcessor, GateProcessor gateProcessor, Func<long> getDataVersion, TimeSpan interval)
+        public ProcessingEngine(
+            DataStore dataStore,
+            PlotProcessor plotProcessor,
+            GateProcessor gateProcessor,
+            Func<long> getDataVersion,
+            TimeSpan interval,
+            OscilloscopePlotProcessor? oscilloscopePlotProcessor = null,
+            Func<long>? getOscilloscopeVersion = null,
+            TimeSpan? parameterPlotInterval = null,
+            TimeSpan? oscilloscopePlotInterval = null)
+            : this(
+                dataStore,
+                CreateDefaultRegistry(
+                    plotProcessor,
+                    getDataVersion,
+                    parameterPlotInterval ?? interval,
+                    oscilloscopePlotProcessor,
+                    getOscilloscopeVersion,
+                    oscilloscopePlotInterval ?? interval),
+                gateProcessor,
+                getDataVersion,
+                interval,
+                parameterPlotInterval)
+        {
+        }
+
+        public ProcessingEngine(
+            DataStore dataStore,
+            PlotPipelineRegistry pipelines,
+            GateProcessor gateProcessor,
+            Func<long> getDataVersion,
+            TimeSpan interval,
+            TimeSpan? parameterPlotInterval = null)
             : base(interval)
         {
             _dataStore = dataStore;
-            _plotProcessor = plotProcessor;
+            _pipelines = pipelines;
             _gateProcessor = gateProcessor;
             _getDataVersion = getDataVersion;
+            _parameterPlotInterval = parameterPlotInterval ?? interval;
+        }
+
+        private static PlotPipelineRegistry CreateDefaultRegistry(
+            PlotProcessor plotProcessor,
+            Func<long> getDataVersion,
+            TimeSpan parameterPlotInterval,
+            OscilloscopePlotProcessor? oscilloscopePlotProcessor,
+            Func<long>? getOscilloscopeVersion,
+            TimeSpan oscilloscopePlotInterval)
+        {
+            var registry = new PlotPipelineRegistry();
+            var parameterPipeline = new ParameterPlotPipeline(plotProcessor, getDataVersion, parameterPlotInterval);
+
+            registry.Register(PlotType.Histogram, parameterPipeline);
+            registry.Register(PlotType.Pseudocolor, parameterPipeline);
+            registry.Register(PlotType.SpectralRibbon, parameterPipeline);
+
+            if (oscilloscopePlotProcessor != null && getOscilloscopeVersion != null)
+            {
+                registry.Register(
+                    PlotType.Oscilloscope,
+                    new OscilloscopePlotPipeline(oscilloscopePlotProcessor, getOscilloscopeVersion, oscilloscopePlotInterval));
+            }
+
+            return registry;
         }
 
         protected override void Tick()
@@ -39,23 +102,35 @@ namespace Worksheet.Services
             lock (_processingLock)
             {
                 long dataVersion = _getDataVersion();
+                var now = DateTime.UtcNow;
 
                 var settings = _dataStore.GetAllSettings();
-                var activePlotIds = new HashSet<Guid>();
+                _activePlotIds.Clear();
 
                 foreach (var plotSettings in settings)
                 {
-                    activePlotIds.Add(plotSettings.Id);
-                    var targetSize = _dataStore.GetRenderTargetSize(plotSettings.Id);
-                    var fingerprint = SettingsFingerprint.From(plotSettings, dataVersion, targetSize);
+                    _activePlotIds.Add(plotSettings.Id);
 
-                    if (_lastProcessedSettings.TryGetValue(plotSettings.Id, out var previous) && previous.Equals(fingerprint))
+                    var targetSize = _dataStore.GetRenderTargetSize(plotSettings.Id);
+                    var pipeline = _pipelines.GetRequired(plotSettings.PlotType);
+                    long plotDataVersion = pipeline.Version;
+                    var fingerprint = SettingsFingerprint.From(plotSettings, pipeline.GetSettingsHash(plotSettings, targetSize), plotDataVersion);
+                    bool hadPrevious = _lastProcessedSettings.TryGetValue(plotSettings.Id, out var previous);
+
+                    if (hadPrevious && previous.Equals(fingerprint))
+                    {
+                        _lastPlotProcessUtc[plotSettings.Id] = now;
+                        continue;
+                    }
+
+                    if (hadPrevious && previous.HasSameSettings(fingerprint) && !IsPlotDue(plotSettings.Id, pipeline.Cadence, now))
                         continue;
 
                     var stopwatch = Stopwatch.StartNew();
-                    var processed = _plotProcessor.Process(plotSettings, targetSize);
+                    var processed = pipeline.Process(plotSettings, targetSize);
                     stopwatch.Stop();
                     RecordComputeTime(plotSettings.PlotType, stopwatch.Elapsed.TotalMilliseconds);
+                    _lastPlotProcessUtc[plotSettings.Id] = now;
 
                     if (processed != null)
                     {
@@ -64,24 +139,56 @@ namespace Worksheet.Services
                     }
                 }
 
-                var staleIds = _lastProcessedSettings.Keys.Where(id => !activePlotIds.Contains(id)).ToArray();
-                foreach (var staleId in staleIds)
-                {
-                    _lastProcessedSettings.Remove(staleId);
-                }
+                RemoveStalePlotState();
 
-                ProcessGates(dataVersion);
+                if (AreGatesDue(now))
+                    ProcessGates(dataVersion);
             }
+        }
+
+        private bool IsPlotDue(Guid plotId, TimeSpan cadence, DateTime now)
+        {
+            if (!_lastPlotProcessUtc.TryGetValue(plotId, out var lastProcessedUtc))
+                return true;
+
+            return now - lastProcessedUtc >= cadence;
+        }
+
+        private void RemoveStalePlotState()
+        {
+            _staleIds.Clear();
+            foreach (var plotId in _lastProcessedSettings.Keys)
+            {
+                if (!_activePlotIds.Contains(plotId))
+                    _staleIds.Add(plotId);
+            }
+
+            foreach (var staleId in _staleIds)
+            {
+                _lastProcessedSettings.Remove(staleId);
+                _lastPlotProcessUtc.Remove(staleId);
+            }
+        }
+
+        private bool AreGatesDue(DateTime now)
+        {
+            if (_lastGateProcessUtc == DateTime.MinValue || now - _lastGateProcessUtc >= _parameterPlotInterval)
+            {
+                _lastGateProcessUtc = now;
+                return true;
+            }
+
+            return false;
         }
 
         private void ProcessGates(long dataVersion)
         {
             var gates = _dataStore.GetAllGates();
-            var activeGateIds = new HashSet<Guid>();
+            _activeGateIds.Clear();
 
             foreach (var gate in gates)
             {
-                activeGateIds.Add(gate.GateId);
+                _activeGateIds.Add(gate.GateId);
 
                 if (!_dataStore.TryGetSettings(gate.Plot.PlotId, out var plotSettings))
                     continue;
@@ -95,11 +202,21 @@ namespace Worksheet.Services
                 _lastProcessedGates[gate.GateId] = fingerprint;
             }
 
-            var stale = _lastProcessedGates.Keys.Where(id => !activeGateIds.Contains(id)).ToArray();
-            foreach (var id in stale)
-                _lastProcessedGates.Remove(id);
+            RemoveStaleGateState();
+            _gateProcessor.RemoveInactiveStates(_activeGateIds);
+        }
 
-            _gateProcessor.RemoveInactiveStates(activeGateIds);
+        private void RemoveStaleGateState()
+        {
+            _staleIds.Clear();
+            foreach (var gateId in _lastProcessedGates.Keys)
+            {
+                if (!_activeGateIds.Contains(gateId))
+                    _staleIds.Add(gateId);
+            }
+
+            foreach (var staleId in _staleIds)
+                _lastProcessedGates.Remove(staleId);
         }
 
         public PlotTimingSnapshot GetAverageComputeTimes()
@@ -115,7 +232,7 @@ namespace Worksheet.Services
 
         public IncrementalProcessingStats GetIncrementalStats()
         {
-            var (deltaAppliedCount, fullRebuildCount, sequenceGapCount) = _plotProcessor.GetDeltaStats();
+            var (deltaAppliedCount, fullRebuildCount, sequenceGapCount) = _pipelines.GetDeltaStats();
             return new IncrementalProcessingStats(deltaAppliedCount, fullRebuildCount, sequenceGapCount);
         }
 
@@ -131,7 +248,7 @@ namespace Worksheet.Services
                 _srComputeCount = 0;
             }
 
-            _plotProcessor.ResetIncrementalState();
+            _pipelines.ResetStates();
             _gateProcessor.ResetIncrementalState();
         }
 
@@ -140,8 +257,10 @@ namespace Worksheet.Services
             lock (_processingLock)
             {
                 _lastProcessedSettings.Clear();
+                _lastPlotProcessUtc.Clear();
                 _lastProcessedGates.Clear();
-                _plotProcessor.ResetIncrementalState();
+                _lastGateProcessUtc = DateTime.MinValue;
+                _pipelines.ResetStates();
                 _gateProcessor.ResetIncrementalState();
             }
         }
@@ -175,30 +294,20 @@ namespace Worksheet.Services
 
         private readonly record struct SettingsFingerprint(
             PlotType PlotType,
-            int BinCount,
-            int XFeature,
-            int YFeature,
-            AxisScaleType XAxisScaleType,
-            AxisScaleType YAxisScaleType,
-            double MinValue,
-            double MaxValue,
-            int PixelWidth,
-            int PixelHeight,
+            int SettingsHash,
             long DataVersion)
         {
-            public static SettingsFingerprint From(PlotSettings settings, long dataVersion, RenderTargetSize targetSize) =>
+            public static SettingsFingerprint From(PlotSettings settings, int settingsHash, long dataVersion) =>
                 new(
                     settings.PlotType,
-                    settings.GetBinCount(),
-                    settings.XFeature,
-                    settings.YFeature,
-                    settings.XAxisScaleType,
-                    settings.YAxisScaleType,
-                    settings.MinValue,
-                    settings.MaxValue,
-                    targetSize.PixelWidth,
-                    targetSize.PixelHeight,
+                    settingsHash,
                     dataVersion);
+
+            public bool HasSameSettings(SettingsFingerprint other)
+            {
+                return PlotType == other.PlotType
+                    && SettingsHash == other.SettingsHash;
+            }
         }
 
         private readonly record struct GateFingerprint(

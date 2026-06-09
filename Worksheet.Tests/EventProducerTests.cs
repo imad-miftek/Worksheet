@@ -13,7 +13,7 @@ public sealed class EventProducerTests
     {
         var producer = new EventProducer(new SignalLayout(1, 1, 2), channelCapacityBatches: 2);
 
-        int written = producer.Publish([new Event([10, 20])]);
+        int written = producer.Publish([EventFactory.CreateEvent(10, 20)]);
 
         Assert.Equal(0, written);
         Assert.False(producer.Reader.TryRead(out _));
@@ -31,9 +31,9 @@ public sealed class EventProducerTests
 
         int written = producer.Publish(
             [
-                new Event([10, 20]),
-                new Event([11, 21]),
-                new Event([12, 22]),
+                EventFactory.CreateEvent(10, 20),
+                EventFactory.CreateEvent(11, 21),
+                EventFactory.CreateEvent(12, 22),
             ]);
 
         Assert.Equal(2, written);
@@ -57,7 +57,7 @@ public sealed class EventProducerTests
 
         producer.Start();
 
-        int written = port.PublishEvents([new Event([10, 20])]);
+        int written = port.PublishEvents([EventFactory.CreateEvent(10, 20)]);
 
         Assert.Equal(1, written);
         Assert.True(producer.Reader.TryRead(out var batch));
@@ -92,6 +92,45 @@ public sealed class EventProducerTests
     }
 
     [Fact]
+    public void PublishEventsPublishesAnalogCapturesToSink()
+    {
+        var buffer = new OscilloscopeBuffer(capacity: 3);
+        var producer = new EventProducer(
+            new SignalLayout(1, 1, 2),
+            channelCapacityBatches: 4,
+            analogCaptureSink: buffer);
+        var first = new Event([10, 20], EventFactory.CreateAnalogCapture(1));
+        var second = new Event([11, 21], EventFactory.CreateAnalogCapture(2));
+
+        producer.Start();
+
+        int written = producer.PublishEvents([first, second]);
+
+        Assert.Equal(1, written);
+        Assert.Equal(2, buffer.Version);
+        Assert.True(buffer.TryGetLatest(out var latest));
+        Assert.Same(second.AnalogCapture, latest);
+    }
+
+    [Fact]
+    public void PublishColumnMajorDoesNotPublishAnalogCaptures()
+    {
+        var buffer = new OscilloscopeBuffer(capacity: 3);
+        var producer = new EventProducer(
+            new SignalLayout(1, 1, 2),
+            channelCapacityBatches: 4,
+            analogCaptureSink: buffer);
+
+        producer.Start();
+
+        int written = producer.PublishColumnMajor([10, 11, 20, 21], eventCount: 2);
+
+        Assert.Equal(1, written);
+        Assert.Equal(0, buffer.Count);
+        Assert.Equal(0, buffer.Version);
+    }
+
+    [Fact]
     public async Task ChasmCapturesPublishedEventsEndToEnd()
     {
         var layout = new SignalLayout(1, 1, 3);
@@ -104,9 +143,9 @@ public sealed class EventProducerTests
         chasm.StartStreaming();
         int written = producer.Publish(
             [
-                new Event([10, 20, 30]),
-                new Event([11, 21, 31]),
-                new Event([12, 22, 32]),
+                EventFactory.CreateEvent(10, 20, 30),
+                EventFactory.CreateEvent(11, 21, 31),
+                EventFactory.CreateEvent(12, 22, 32),
             ]);
 
         await WaitUntilAsync(() => source.TotalEventsIngested == 3);

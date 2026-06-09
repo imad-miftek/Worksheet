@@ -9,12 +9,15 @@ namespace Worksheet.Services
     {
         private const int PopulationCount = 4;
         private const double MaxValue = 100_000_000d;
+        private const int MockAnalogChannelCount = 4;
+        private const int MockAnalogTimestampCount = 1750;
         private const int MaxThroughputBurstBatches = 16;
         private static readonly TimeSpan StopWaitTimeout = TimeSpan.FromMilliseconds(250);
         private static readonly TimeSpan MaxThroughputRestInterval = TimeSpan.FromMilliseconds(1);
 
         private readonly ChasmOptions _options;
         private readonly Channel<IEventBatch> _channel;
+        private readonly IAnalogCaptureSink? _analogCaptureSink;
         private readonly int _signalCount;
 
         private CancellationTokenSource? _cts;
@@ -25,10 +28,12 @@ namespace Worksheet.Services
         private readonly double[,] _logMeans;
         private readonly double[,] _logSigmas;
         private readonly double[] _populationWeights = new double[PopulationCount];
+        private int _analogCaptureSequence;
 
-        public MockProducer(ChasmOptions? options = null)
+        public MockProducer(ChasmOptions? options = null, IAnalogCaptureSink? analogCaptureSink = null)
         {
             _options = options ?? ChasmOptions.Default;
+            _analogCaptureSink = analogCaptureSink;
             _signalCount = _options.SignalLayout.SignalCount;
             _logMeans = new double[_signalCount, PopulationCount];
             _logSigmas = new double[_signalCount, PopulationCount];
@@ -122,6 +127,7 @@ namespace Worksheet.Services
 
                     var batch = GenerateBatch(_options.BatchSize);
                     _channel.Writer.TryWrite(batch);
+                    PublishMockAnalogCapture();
                 }
             }
             catch (OperationCanceledException)
@@ -148,6 +154,7 @@ namespace Worksheet.Services
 
                     var batch = GenerateColumnMajorBatch(_options.BatchSize);
                     _channel.Writer.TryWrite(batch);
+                    PublishMockAnalogCapture();
 
                     batchesSinceRest++;
                     if (batchesSinceRest >= MaxThroughputBurstBatches)
@@ -226,6 +233,72 @@ namespace Worksheet.Services
             }
 
             return new ColumnMajorEventBatch(count, values, _options.SignalLayout);
+        }
+
+        private void PublishMockAnalogCapture()
+        {
+            if (_analogCaptureSink == null)
+                return;
+
+            try
+            {
+                _analogCaptureSink.Publish(GenerateAnalogCapture());
+            }
+            catch (Exception ex)
+            {
+                AppLog.Exception(ex, "MockProducer.PublishMockAnalogCapture");
+            }
+        }
+
+        private AnalogCapture GenerateAnalogCapture()
+        {
+            var values = new double[MockAnalogChannelCount * MockAnalogTimestampCount];
+            int sequence = _analogCaptureSequence++;
+
+            for (int channel = 0; channel < MockAnalogChannelCount; channel++)
+            {
+                double baseAmplitude = 0.38 - channel * 0.055;
+                double amplitude = baseAmplitude * (1.0 + 0.14 * StableNoise(channel + 17, sequence));
+                double center = 360 + channel * 135 + 6.0 * StableNoise(channel + 29, sequence);
+                double width = (22 + channel * 4) * (1.0 + 0.12 * StableNoise(channel + 41, sequence));
+                double undershootCenter = center + 62;
+                double recoveryCenter = center + 150;
+                double baselineOffset = 0.006 * StableNoise(channel + 53, sequence);
+                double baselinePhase = 2 * Math.PI * StableNoise(channel + 67, sequence);
+                int offset = channel * MockAnalogTimestampCount;
+
+                for (int t = 0; t < MockAnalogTimestampCount; t++)
+                {
+                    double baseline = baselineOffset + 0.012 * Math.Sin((2 * Math.PI * t / 430.0) + baselinePhase);
+                    double pulse = amplitude * Gaussian(t, center, width);
+                    double undershoot = -amplitude * 0.24 * Gaussian(t, undershootCenter, width * 1.7);
+                    double recovery = amplitude * 0.09 * Gaussian(t, recoveryCenter, width * 3.0);
+                    double noise = 0.014 * StableNoise(channel + sequence * 31, t);
+                    values[offset + t] = baseline + pulse + undershoot + recovery + noise;
+                }
+            }
+
+            return new AnalogCapture(values, MockAnalogChannelCount, MockAnalogTimestampCount);
+        }
+
+        private static double Gaussian(double x, double center, double sigma)
+        {
+            double z = (x - center) / sigma;
+            return Math.Exp(-0.5 * z * z);
+        }
+
+        private static double StableNoise(int channel, int timestamp)
+        {
+            unchecked
+            {
+                uint x = (uint)((channel + 1) * 0x9E3779B9) ^ (uint)(timestamp * 0x85EBCA6B);
+                x ^= x >> 16;
+                x *= 0x7FEB352D;
+                x ^= x >> 15;
+                x *= 0x846CA68B;
+                x ^= x >> 16;
+                return (x / (double)uint.MaxValue * 2.0) - 1.0;
+            }
         }
 
         private void InitializePopulationModel()

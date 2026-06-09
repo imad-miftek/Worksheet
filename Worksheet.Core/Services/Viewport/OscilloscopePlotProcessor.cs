@@ -1,0 +1,72 @@
+using System;
+using System.Collections.Generic;
+using Worksheet.Models;
+using Worksheet.Models.Data;
+
+namespace Worksheet.Services
+{
+    public sealed class OscilloscopePlotProcessor
+    {
+        private static readonly int[] DefaultChannelSelection = [0];
+        private readonly IOscilloscopeBuffer _buffer;
+
+        public OscilloscopePlotProcessor(IOscilloscopeBuffer buffer)
+        {
+            _buffer = buffer ?? throw new ArgumentNullException(nameof(buffer));
+        }
+
+        public OscilloscopeProcessedData Process(PlotSettings settings)
+        {
+            if (settings == null)
+                throw new ArgumentNullException(nameof(settings));
+
+            if (!_buffer.TryGetLatest(out var capture) || capture == null)
+                return Empty(settings.Id);
+
+            var requestedChannels = settings.OscilloscopeChannelIndices;
+            if (requestedChannels == null || requestedChannels.Length == 0)
+                requestedChannels = DefaultChannelSelection;
+
+            var validChannels = new List<int>(requestedChannels.Length);
+            foreach (int channelIndex in requestedChannels)
+            {
+                if ((uint)channelIndex < (uint)capture.ChannelCount)
+                    validChannels.Add(channelIndex);
+            }
+
+            if (validChannels.Count == 0)
+                return Empty(settings.Id);
+
+            var signals = new double[validChannels.Count][];
+            for (int i = 0; i < validChannels.Count; i++)
+            {
+                int channelIndex = validChannels[i];
+                var signal = new double[capture.TimestampCount];
+                Array.Copy(
+                    capture.Values,
+                    channelIndex * capture.TimestampCount,
+                    signal,
+                    0,
+                    capture.TimestampCount);
+                signals[i] = signal;
+            }
+
+            return new OscilloscopeProcessedData(
+                settings.Id,
+                signals,
+                validChannels.ToArray(),
+                capture.TimestampCount,
+                isEmpty: false);
+        }
+
+        private static OscilloscopeProcessedData Empty(Guid plotId)
+        {
+            return new OscilloscopeProcessedData(
+                plotId,
+                Array.Empty<double[]>(),
+                Array.Empty<int>(),
+                timestampCount: 0,
+                isEmpty: true);
+        }
+    }
+}

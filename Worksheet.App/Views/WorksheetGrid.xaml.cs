@@ -68,8 +68,9 @@ namespace Worksheet.Views
             _viewportSession = viewportSession ?? new ViewportSession(
                 Dispatcher,
                 System.TimeSpan.FromMilliseconds(250),
-                System.TimeSpan.FromMilliseconds(100),
-                ChasmOptions.FromPreset(CurrentChasmPreset));
+                System.TimeSpan.FromMilliseconds(33),
+                ChasmOptions.FromPreset(CurrentChasmPreset),
+                System.TimeSpan.FromMilliseconds(33));
             _viewportSession.Start();
 
             InitializeComponent();
@@ -376,7 +377,7 @@ namespace Worksheet.Views
                 PlotView = plotView,
                 OnCloseRequested = (item) =>
                 {
-                    if (settings != null && settings.PlotType != PlotType.Oscilloscope)
+                    if (settings != null)
                     {
                         _viewportSession.UnregisterPlot(settings.Id);
                     }
@@ -406,7 +407,7 @@ namespace Worksheet.Views
             plotView?.AttachContextMenu(plotItem);
             _selectionManager.Register(plotItem, plotItem.OnSelect, plotItem.OnDeselect);
 
-            if (plotView != null && settings != null && settings.PlotType != PlotType.Oscilloscope)
+            if (plotView != null && settings != null)
             {
                 _viewportSession.RegisterPlot(settings);
                 _viewportSession.RegisterRenderTarget(plot, plotView, settings);
@@ -444,7 +445,7 @@ namespace Worksheet.Views
                 PlotView = plotView,
                 OnCloseRequested = (item) =>
                 {
-                    if (settings != null && settings.PlotType != PlotType.Oscilloscope)
+                    if (settings != null)
                     {
                         _viewportSession.UnregisterPlot(settings.Id);
                     }
@@ -478,8 +479,8 @@ namespace Worksheet.Views
             // Register with selection manager
             _selectionManager.Register(plotItem, plotItem.OnSelect, plotItem.OnDeselect);
 
-            // Register with ViewportSession for processing (skip oscilloscope - has its own rendering)
-            if (plotView != null && settings != null && settings.PlotType != PlotType.Oscilloscope)
+            // Register with ViewportSession for processing/rendering.
+            if (plotView != null && settings != null)
             {
                 _viewportSession.RegisterPlot(settings);
                 _viewportSession.RegisterRenderTarget(plot, plotView, settings);

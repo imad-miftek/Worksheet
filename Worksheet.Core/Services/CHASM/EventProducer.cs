@@ -10,17 +10,20 @@ namespace Worksheet.Services
         private readonly Channel<IEventBatch> _channel;
         private readonly EventBatchConverter _converter;
         private readonly SignalLayout _signalLayout;
+        private readonly IAnalogCaptureSink? _analogCaptureSink;
         private volatile bool _running;
 
         public EventProducer(
             ChasmOptions? options = null,
             int maxBatchSize = 1000,
-            int parallelCellThreshold = EventBatchConverter.DefaultParallelCellThreshold)
+            int parallelCellThreshold = EventBatchConverter.DefaultParallelCellThreshold,
+            IAnalogCaptureSink? analogCaptureSink = null)
             : this(
                 options?.SignalLayout ?? ChasmOptions.Default.SignalLayout,
                 options?.ChannelCapacityBatches ?? ChasmOptions.Default.ChannelCapacityBatches,
                 maxBatchSize,
-                parallelCellThreshold)
+                parallelCellThreshold,
+                analogCaptureSink)
         {
         }
 
@@ -28,12 +31,14 @@ namespace Worksheet.Services
             SignalLayout signalLayout,
             int channelCapacityBatches,
             int maxBatchSize = 1000,
-            int parallelCellThreshold = EventBatchConverter.DefaultParallelCellThreshold)
+            int parallelCellThreshold = EventBatchConverter.DefaultParallelCellThreshold,
+            IAnalogCaptureSink? analogCaptureSink = null)
         {
             if (channelCapacityBatches <= 0)
                 throw new ArgumentOutOfRangeException(nameof(channelCapacityBatches));
 
             _signalLayout = signalLayout;
+            _analogCaptureSink = analogCaptureSink;
 
             var bounded = new BoundedChannelOptions(channelCapacityBatches)
             {
@@ -75,8 +80,11 @@ namespace Worksheet.Services
             if (!_running || events.Count == 0)
                 return 0;
 
+            var batches = _converter.Convert(events);
+            PublishAnalogCaptures(events);
+
             int written = 0;
-            foreach (var batch in _converter.Convert(events))
+            foreach (var batch in batches)
             {
                 if (_channel.Writer.TryWrite(batch))
                     written++;
@@ -94,6 +102,22 @@ namespace Worksheet.Services
 
             var batch = new ColumnMajorEventBatch(eventCount, values, _signalLayout);
             return _channel.Writer.TryWrite(batch) ? 1 : 0;
+        }
+
+        private void PublishAnalogCaptures(IReadOnlyList<Event> events)
+        {
+            if (_analogCaptureSink == null)
+                return;
+
+            try
+            {
+                for (int i = 0; i < events.Count; i++)
+                    _analogCaptureSink.Publish(events[i].AnalogCapture);
+            }
+            catch (Exception ex)
+            {
+                AppLog.Exception(ex, "EventProducer.PublishAnalogCaptures");
+            }
         }
     }
 }

@@ -13,6 +13,8 @@ namespace Worksheet.Models
         public AxisScaleType YAxisScaleType { get; set; } = AxisScaleType.Linear;
         public double MinValue { get; set; } = 0;
         public double MaxValue { get; set; } = 100_000_000;
+        public int OscilloscopeChannelCount { get; set; } = 4;
+        public int[] OscilloscopeChannelIndices { get; set; } = [0];
 
         public int GetBinCount()
         {

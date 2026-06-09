@@ -419,7 +419,7 @@ public sealed class IngestionProfileTests
             for (int s = 0; s < signalCount; s++)
                 values[s] = 1 + (((offset + e + 1) * (s + 3) * 7919) % 100_000_000);
 
-            events[e] = new Event(values);
+            events[e] = new Event(values, EventFactory.CreateAnalogCapture(e));
         }
 
         return events;
