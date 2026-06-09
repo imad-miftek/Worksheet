@@ -44,7 +44,7 @@ Standardized ingestion layers:
 | Layer | Responsibility | Current classes |
 | --- | --- | --- |
 | Ingress source | Generates or receives incoming event batches | `MockProducer`, `EventProducer`, `IEventIngestionPort` |
-| Batch normalization | Converts external event shapes into CHASM batch payloads | `EventBatchConverter<TEvent>`, `Event`, `IEventSignalValues` |
+| Batch normalization | Converts event parameter objects into CHASM batch payloads | `EventBatchConverter`, `Event` |
 | Queue transport | Buffers normalized CHASM batches | `Channel<IEventBatch>`, `IEventBatch`, `EventBatch`, `ColumnMajorEventBatch` |
 | Queue drain | Reads queued batches asynchronously | `ChasmConsumer`, `IConsumer` |
 | Store append | Dispatches batch layouts into retained storage writes | `ChasmDataSource`, `IChasmDataSource` |
@@ -74,7 +74,7 @@ For DAQ event-object batches:
 ```text
 IReadOnlyList<Event>
   -> IEventIngestionPort.PublishEvents(...)
-  -> EventBatchConverter<Event>
+  -> EventBatchConverter
   -> ColumnMajorEventBatch
   -> Channel<IEventBatch>
 ```
@@ -96,7 +96,7 @@ Naming policy: keep code grouped by these layers. New DAQ-specific code should b
 
 ### Event object shape validation
 
-`EventBatchConverter<TEvent>` now validates `IEventSignalValues.SignalCount` against the configured `SignalLayout` before conversion. This prevents short or wrong-shaped `Event` batches from failing later inside the conversion loop or inside `Parallel.For`.
+`EventBatchConverter` now validates `Event.SignalCount` against the configured `SignalLayout` before conversion. This prevents short or wrong-shaped `Event` batches from failing later inside the conversion loop or inside `Parallel.For`.
 
 Evidence:
 
@@ -255,14 +255,14 @@ The current architecture is workable and moving in the right direction:
 - Project split is basically correct.
 - CHASM ingestion boundaries are understandable.
 - `ColumnMajorEventBatch` is the correct fast normalized batch shape.
-- `EventBatchConverter<TEvent>` is the event-processing step, but scoped narrowly enough to avoid becoming a vague ingestion god class.
+- `EventBatchConverter` is the event-parameter normalization step, but scoped narrowly enough to avoid becoming a vague ingestion god class.
 - The main scalability risk is not the class layout; it is the retained snapshot concurrency/performance tradeoff and eventual DAQ integration boundary.
 
 Do not add a broad `EventProcessor` class right now. If ingestion grows, prefer a specifically named boundary object:
 
 ```text
 DaqEventProducer
-EventBatchConverter<TEvent>
+EventBatchConverter
 EventIngestionPipeline
 ```
 

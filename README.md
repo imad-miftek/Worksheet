@@ -115,7 +115,7 @@ The raw signal axis is layout-driven in `Worksheet.Core`:
 - `DataSource.GetSnapshot(...)` returns the fast live ring-buffer view; `DataSource.GetSnapshotCopy(...)` returns a stable contiguous copy for paths that need isolation.
 - `IEventIngestionPort` accepts either `IReadOnlyList<Event>` batches or already-flat column-major buffers.
 - `EventProducer.PublishEvents(...)` converts object batches into `ColumnMajorEventBatch`; `EventProducer.PublishColumnMajor(...)` writes flat buffers directly without copying.
-- `EventBatchConverter<TEvent>` converts DAQ-style event object batches into `ColumnMajorEventBatch` payloads for the fast ingestion path.
+- `EventBatchConverter` converts `Event` object batches into `ColumnMajorEventBatch` payloads for the fast ingestion path.
 
 Default mock acquisition settings come from `Worksheet.Core/Services/CHASM/ChasmOptions.cs`:
 

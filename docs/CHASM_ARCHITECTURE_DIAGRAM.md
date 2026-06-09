@@ -47,7 +47,7 @@ The CHASM names make more sense if every class is assigned to one layer. Do not 
 | Layer | Responsibility | Current classes | Standard rule |
 | --- | --- | --- | --- |
 | Ingress source | Creates or receives incoming event batches and puts them on the queue | `MockProducer`, `EventProducer`, `IEventIngestionPort` | This is the only layer that talks to mock generation, DAQ callbacks, or external acquisition APIs. |
-| Batch normalization | Converts external/object-shaped data into CHASM batch payloads | `EventBatchConverter<TEvent>`, `Event`, `IEventSignalValues` | External event objects are normalized before they enter the CHASM queue. |
+| Batch normalization | Converts event object parameters into CHASM batch payloads | `EventBatchConverter`, `Event` | Event parameters are normalized before they enter the CHASM queue. |
 | Queue transport | Buffers batches between acquisition and storage | `Channel<IEventBatch>`, `IEventBatch`, `EventBatch`, `ColumnMajorEventBatch` | The queue carries CHASM batch messages only; it does not know about DAQ SDK objects or retained storage. |
 | Queue drain | Reads queued batches asynchronously | `ChasmConsumer`, `IConsumer` | This layer owns the async read loop only. It should not know batch memory layout details. |
 | Store append | Interprets CHASM batch payloads and appends them to retained memory | `ChasmDataSource`, `IChasmDataSource` | This is the only crossing point from temporary batch messages into the rolling `DataSource`. |
@@ -132,10 +132,10 @@ That means the producer does not write into `DataSource` directly. It writes int
 For real DAQ integration, the equivalent boundary is:
 
 ```text
-DAQ event-object batch -> EventBatchConverter<TEvent> -> ColumnMajorEventBatch -> Channel<IEventBatch>
+DAQ event-object batch -> EventBatchConverter -> ColumnMajorEventBatch -> Channel<IEventBatch>
 ```
 
-`EventBatchConverter<TEvent>` is intentionally narrow. It converts event-object batches into CHASM's normalized flat column-major batch shape. It does not own the DAQ SDK, the rolling buffer, processing, or rendering.
+`EventBatchConverter` is intentionally narrow. It converts `Event.Parameters` batches into CHASM's normalized flat column-major batch shape. It does not own the DAQ SDK, waveform capture, the rolling buffer, processing, or rendering.
 
 This keeps acquisition, queueing, storage, processing, and rendering separate enough to test and profile independently.
 
@@ -495,7 +495,7 @@ If a DAQ API provides batches of event objects, CHASM should not make `DataSourc
 ```text
 IReadOnlyList<Event>
     -> IEventIngestionPort.PublishEvents(...)
-    -> EventBatchConverter<Event>
+    -> EventBatchConverter
     -> ColumnMajorEventBatch
     -> Channel<IEventBatch>
 ```

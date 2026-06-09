@@ -23,9 +23,9 @@ public sealed class EventBatchConverterTests
         var converter = CreateConverter(signalCount: 3);
         var events = new[]
         {
-            new TestEvent([10, 20, 30]),
-            new TestEvent([11, 21, 31]),
-            new TestEvent([12, 22, 32]),
+            new Event([10, 20, 30]),
+            new Event([11, 21, 31]),
+            new Event([12, 22, 32]),
         };
 
         var batch = Assert.Single(converter.Convert(events));
@@ -47,9 +47,9 @@ public sealed class EventBatchConverterTests
         var converter = CreateConverter(signalCount: 2, maxBatchSize: 2);
         var events = new[]
         {
-            new TestEvent([10, 20]),
-            new TestEvent([11, 21]),
-            new TestEvent([12, 22]),
+            new Event([10, 20]),
+            new Event([11, 21]),
+            new Event([12, 22]),
         };
 
         var batches = converter.Convert(events);
@@ -67,9 +67,9 @@ public sealed class EventBatchConverterTests
         var converter = CreateConverter(signalCount: 3, parallelCellThreshold: 1);
         var events = new[]
         {
-            new TestEvent([10, 20, 30]),
-            new TestEvent([11, 21, 31]),
-            new TestEvent([12, 22, 32]),
+            new Event([10, 20, 30]),
+            new Event([11, 21, 31]),
+            new Event([12, 22, 32]),
         };
 
         var batch = Assert.Single(converter.Convert(events));
@@ -95,7 +95,7 @@ public sealed class EventBatchConverterTests
     public void ConvertRejectsEventsThatDoNotMatchLayout()
     {
         var layout = new SignalLayout(1, 1, 3);
-        var converter = new EventBatchConverter<Event>(layout);
+        var converter = new EventBatchConverter(layout);
 
         var ex = Assert.Throws<ArgumentException>(() => converter.Convert([new Event([10, 20])]));
 
@@ -109,9 +109,9 @@ public sealed class EventBatchConverterTests
         var channel = Channel.CreateUnbounded<IEventBatch>();
         var events = new[]
         {
-            new TestEvent([10, 20]),
-            new TestEvent([11, 21]),
-            new TestEvent([12, 22]),
+            new Event([10, 20]),
+            new Event([11, 21]),
+            new Event([12, 22]),
         };
 
         int written = converter.TryWriteTo(channel.Writer, events);
@@ -126,18 +126,15 @@ public sealed class EventBatchConverterTests
         Assert.Equal([12, 22], second.Values);
     }
 
-    private static EventBatchConverter<TestEvent> CreateConverter(
+    private static EventBatchConverter CreateConverter(
         int signalCount,
         int maxBatchSize = 1000,
-        int parallelCellThreshold = EventBatchConverter<TestEvent>.DefaultParallelCellThreshold)
+        int parallelCellThreshold = EventBatchConverter.DefaultParallelCellThreshold)
     {
         var layout = new SignalLayout(1, 1, signalCount);
-        return new EventBatchConverter<TestEvent>(
+        return new EventBatchConverter(
             layout,
-            static (ev, signalIndex) => ev.Values[signalIndex],
             maxBatchSize,
             parallelCellThreshold);
     }
-
-    private sealed record TestEvent(double[] Values);
 }

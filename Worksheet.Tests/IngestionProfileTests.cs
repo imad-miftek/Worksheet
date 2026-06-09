@@ -220,7 +220,7 @@ public sealed class IngestionProfileTests
     public void ProfileEventConversionToColumnMajor(int lasers, int features, int channels)
     {
         var layout = new SignalLayout(lasers, features, channels);
-        var converter = new EventBatchConverter<Event>(layout, maxBatchSize: BatchSize);
+        var converter = new EventBatchConverter(layout, maxBatchSize: BatchSize);
         var events = CreateEvents(layout.SignalCount, BatchSize, offset: 0);
         IReadOnlyList<ColumnMajorEventBatch> batches = Array.Empty<ColumnMajorEventBatch>();
 
@@ -245,7 +245,7 @@ public sealed class IngestionProfileTests
     {
         var layout = new SignalLayout(lasers, features, channels);
         var source = new DataSource(layout, windowCapacity: BatchCount * BatchSize);
-        var converter = new EventBatchConverter<Event>(layout, maxBatchSize: BatchSize);
+        var converter = new EventBatchConverter(layout, maxBatchSize: BatchSize);
         var events = CreateEvents(layout.SignalCount, BatchSize, offset: 0);
 
         var elapsed = Measure(() =>

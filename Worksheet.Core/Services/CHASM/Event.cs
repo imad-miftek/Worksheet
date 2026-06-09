@@ -2,23 +2,23 @@ using System;
 
 namespace Worksheet.Services
 {
-    public sealed class Event : IEventSignalValues
+    public sealed class Event
     {
-        private readonly double[] _values;
-
-        public Event(double[] values)
+        public Event(double[] parameters)
         {
-            _values = values ?? throw new ArgumentNullException(nameof(values));
+            Parameters = parameters ?? throw new ArgumentNullException(nameof(parameters));
         }
 
-        public int SignalCount => _values.Length;
+        public double[] Parameters { get; }
+
+        public int SignalCount => Parameters.Length;
 
         public double GetSignalValue(int signalIndex)
         {
-            if ((uint)signalIndex >= (uint)_values.Length)
+            if ((uint)signalIndex >= (uint)Parameters.Length)
                 throw new ArgumentOutOfRangeException(nameof(signalIndex));
 
-            return _values[signalIndex];
+            return Parameters[signalIndex];
         }
     }
 }

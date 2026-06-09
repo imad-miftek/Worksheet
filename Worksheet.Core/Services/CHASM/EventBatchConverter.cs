@@ -6,46 +6,23 @@ using Worksheet.Models;
 
 namespace Worksheet.Services
 {
-    public sealed class EventBatchConverter<TEvent>
+    public sealed class EventBatchConverter
     {
         public const int DefaultParallelCellThreshold = 250_000;
 
         private readonly SignalLayout _signalLayout;
-        private readonly Func<TEvent, int, double> _readSignalValue;
 
         public EventBatchConverter(
             SignalLayout signalLayout,
             int maxBatchSize = 1000,
             int parallelCellThreshold = DefaultParallelCellThreshold)
-            : this(
-                signalLayout,
-                static (ev, signalIndex) =>
-                {
-                    if (ev is not IEventSignalValues signalValues)
-                        throw new InvalidOperationException($"{typeof(TEvent).Name} must implement {nameof(IEventSignalValues)} when no value reader is provided.");
-
-                    return signalValues.GetSignalValue(signalIndex);
-                },
-                maxBatchSize,
-                parallelCellThreshold)
         {
-        }
-
-        public EventBatchConverter(
-            SignalLayout signalLayout,
-            Func<TEvent, int, double> readSignalValue,
-            int maxBatchSize = 1000,
-            int parallelCellThreshold = DefaultParallelCellThreshold)
-        {
-            if (readSignalValue == null)
-                throw new ArgumentNullException(nameof(readSignalValue));
             if (maxBatchSize <= 0)
                 throw new ArgumentOutOfRangeException(nameof(maxBatchSize));
             if (parallelCellThreshold < 0)
                 throw new ArgumentOutOfRangeException(nameof(parallelCellThreshold));
 
             _signalLayout = signalLayout;
-            _readSignalValue = readSignalValue;
             MaxBatchSize = maxBatchSize;
             ParallelCellThreshold = parallelCellThreshold;
         }
@@ -56,7 +33,7 @@ namespace Worksheet.Services
 
         public int ParallelCellThreshold { get; }
 
-        public IReadOnlyList<ColumnMajorEventBatch> Convert(IReadOnlyList<TEvent> events)
+        public IReadOnlyList<ColumnMajorEventBatch> Convert(IReadOnlyList<Event> events)
         {
             if (events == null)
                 throw new ArgumentNullException(nameof(events));
@@ -73,7 +50,7 @@ namespace Worksheet.Services
             return batches;
         }
 
-        public int TryWriteTo(ChannelWriter<IEventBatch> writer, IReadOnlyList<TEvent> events)
+        public int TryWriteTo(ChannelWriter<IEventBatch> writer, IReadOnlyList<Event> events)
         {
             if (writer == null)
                 throw new ArgumentNullException(nameof(writer));
@@ -90,7 +67,7 @@ namespace Worksheet.Services
             return written;
         }
 
-        private ColumnMajorEventBatch ConvertChunk(IReadOnlyList<TEvent> events, int offset, int count)
+        private ColumnMajorEventBatch ConvertChunk(IReadOnlyList<Event> events, int offset, int count)
         {
             ValidateEventShape(events, offset, count);
 
@@ -105,37 +82,37 @@ namespace Worksheet.Services
             return new ColumnMajorEventBatch(count, values, _signalLayout);
         }
 
-        private void ValidateEventShape(IReadOnlyList<TEvent> events, int offset, int count)
+        private void ValidateEventShape(IReadOnlyList<Event> events, int offset, int count)
         {
             for (int e = 0; e < count; e++)
             {
-                if (events[offset + e] is IEventSignalValues signalValues &&
-                    signalValues.SignalCount != _signalLayout.SignalCount)
+                int signalCount = events[offset + e].SignalCount;
+                if (signalCount != _signalLayout.SignalCount)
                 {
                     throw new ArgumentException(
-                        $"Event at index {offset + e} has {signalValues.SignalCount} signals, expected {_signalLayout.SignalCount}.",
+                        $"Event at index {offset + e} has {signalCount} signals, expected {_signalLayout.SignalCount}.",
                         nameof(events));
                 }
             }
         }
 
-        private void FillColumnMajor(IReadOnlyList<TEvent> events, int offset, int count, double[] values)
+        private void FillColumnMajor(IReadOnlyList<Event> events, int offset, int count, double[] values)
         {
             for (int signal = 0; signal < _signalLayout.SignalCount; signal++)
             {
                 int signalOffset = signal * count;
                 for (int e = 0; e < count; e++)
-                    values[signalOffset + e] = _readSignalValue(events[offset + e], signal);
+                    values[signalOffset + e] = events[offset + e].GetSignalValue(signal);
             }
         }
 
-        private void FillColumnMajorParallel(IReadOnlyList<TEvent> events, int offset, int count, double[] values)
+        private void FillColumnMajorParallel(IReadOnlyList<Event> events, int offset, int count, double[] values)
         {
             Parallel.For(0, _signalLayout.SignalCount, signal =>
             {
                 int signalOffset = signal * count;
                 for (int e = 0; e < count; e++)
-                    values[signalOffset + e] = _readSignalValue(events[offset + e], signal);
+                    values[signalOffset + e] = events[offset + e].GetSignalValue(signal);
             });
         }
     }

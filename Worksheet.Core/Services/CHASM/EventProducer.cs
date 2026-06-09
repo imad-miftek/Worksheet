@@ -8,14 +8,14 @@ namespace Worksheet.Services
     public sealed class EventProducer : IProducer, IEventIngestionPort
     {
         private readonly Channel<IEventBatch> _channel;
-        private readonly EventBatchConverter<Event> _converter;
+        private readonly EventBatchConverter _converter;
         private readonly SignalLayout _signalLayout;
         private volatile bool _running;
 
         public EventProducer(
             ChasmOptions? options = null,
             int maxBatchSize = 1000,
-            int parallelCellThreshold = EventBatchConverter<Event>.DefaultParallelCellThreshold)
+            int parallelCellThreshold = EventBatchConverter.DefaultParallelCellThreshold)
             : this(
                 options?.SignalLayout ?? ChasmOptions.Default.SignalLayout,
                 options?.ChannelCapacityBatches ?? ChasmOptions.Default.ChannelCapacityBatches,
@@ -28,7 +28,7 @@ namespace Worksheet.Services
             SignalLayout signalLayout,
             int channelCapacityBatches,
             int maxBatchSize = 1000,
-            int parallelCellThreshold = EventBatchConverter<Event>.DefaultParallelCellThreshold)
+            int parallelCellThreshold = EventBatchConverter.DefaultParallelCellThreshold)
         {
             if (channelCapacityBatches <= 0)
                 throw new ArgumentOutOfRangeException(nameof(channelCapacityBatches));
@@ -43,7 +43,7 @@ namespace Worksheet.Services
             };
 
             _channel = Channel.CreateBounded<IEventBatch>(bounded);
-            _converter = new EventBatchConverter<Event>(
+            _converter = new EventBatchConverter(
                 signalLayout,
                 maxBatchSize,
                 parallelCellThreshold);
