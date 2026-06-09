@@ -47,7 +47,11 @@ namespace Worksheet.Services
 
         public ChannelWindowSnapshot GetSnapshot(int featureIndex) => _dataSource.GetSnapshot(featureIndex);
 
+        public ChannelWindowSnapshot GetSnapshotCopy(int featureIndex) => _dataSource.GetSnapshotCopy(featureIndex);
+
         public MultiChannelWindowSnapshot GetSnapshot(params int[] featureIndices) => _dataSource.GetSnapshot(featureIndices);
+
+        public MultiChannelWindowSnapshot GetSnapshotCopy(params int[] featureIndices) => _dataSource.GetSnapshotCopy(featureIndices);
     }
 }
 

@@ -90,11 +90,17 @@ The `Load Histogram Config` toolbar action currently builds a preset layout with
 
 The current architecture is built around a bounded rolling raw-event window:
 
-1. `MockProducer` emits event batches into the `CHASM` pipeline.
+1. An ingress source emits event batches into the `CHASM` pipeline. Today that can be `MockProducer` or the push-style `EventProducer`.
 2. `ViewportSession` coordinates ingestion, processing, rendering, and gate evaluation.
 3. `DataSource` and related viewport services retain a fixed-capacity logical event window.
 4. `ProcessingEngine` produces plot-ready data when retained data changes.
 5. `RenderingEngine` pushes updated data into the registered ScottPlot views.
+
+`ChasmPipelineFactory` is the acquisition swap point:
+
+- `CreateMock(...)` wires the current mock acquisition path.
+- `CreateEventIngress(...)` wires the production-style push path and returns an `IEventIngestionPort` for a DAQ adapter to call.
+- `CreateMock(...)` and `CreateEventIngress(...)` can receive an `IAnalogCaptureSink`, which lets waveform captures feed a separate oscilloscope stream without storing waveforms in `DataSource`.
 
 Important semantics:
 
@@ -107,7 +113,18 @@ The raw signal axis is layout-driven in `Worksheet.Core`:
 - `SignalLayout.Default` preserves the current `1 laser x 1 feature x 51 connected channels` shape.
 - Larger event shapes such as `6 lasers x 9 features x 60 channels` map to flat column indices with `SignalLayout.ToIndex(laser, feature, channel)`.
 - `DataSource` still stores signal values column-wise as `signalColumns[signalIndex][eventIndex]`, so selected Laser/Feature/Channel combinations can be read directly.
-- `EventBatchConverter<TEvent>` converts DAQ-style event object batches into `ColumnMajorEventBatch` payloads for the fast ingestion path.
+- `DataSource.GetSnapshot(...)` returns the fast live ring-buffer view; `DataSource.GetSnapshotCopy(...)` returns a stable contiguous copy for paths that need isolation.
+- `IEventIngestionPort` accepts either `IReadOnlyList<Event>` batches or already-flat column-major buffers.
+- `Event.Parameters` is the flattened `[laser, feature, channel]` parameter vector used by plots.
+- `Event.AnalogCapture` is the required waveform source shaped as `[channel, timestamp]`; it is not stored in `DataSource`.
+- `EventProducer.PublishEvents(...)` converts object batches into `ColumnMajorEventBatch`; `EventProducer.PublishColumnMajor(...)` writes flat buffers directly without copying.
+- `MockProducer` publishes synthetic analog captures when an oscilloscope sink is attached, so the development oscilloscope path exercises the same stream boundary.
+- `OscilloscopeBuffer` is a bounded transient latest-capture buffer for waveform plots. It drops older captures when the oscilloscope cannot keep up.
+- `OscilloscopePlotProcessor` drains the newest capture and extracts the selected analog channels into `OscilloscopeProcessedData`.
+- Oscilloscope channel selection is stored in `PlotSettings.OscilloscopeChannelIndices` and can include multiple analog channels.
+- Oscilloscope processing keys off `OscilloscopeBuffer.Version`, not CHASM `DataVersion`, because waveform captures live outside the retained event window.
+- Oscilloscope plots run on a separate about-30 Hz processing/render cadence while parameter plots keep the slower rolling-window processing cadence.
+- `EventBatchConverter` converts `Event` object batches into `ColumnMajorEventBatch` payloads for the fast ingestion path.
 
 Default mock acquisition settings come from `Worksheet.Core/Services/CHASM/ChasmOptions.cs`:
 
@@ -131,6 +148,7 @@ Log directory resolution order:
 Useful project documents:
 
 - `docs/CHASM_PIPELINE.md`: acquisition and rolling-window semantics
+- `docs/PLOT_PIPELINE_REGISTRY_PLAN.md`: planned plot-pipeline registry refactor for per-plot data sources and cadences
 - `docs/PLOT_PIPELINE_AUDIT.md`: current processing/rendering behavior and bottlenecks
 - `docs/UI_VISUALIZATION_RESEARCH.md`: background research on low-latency multi-plot visualization
 - `docs/CODING_STANDARDS.md`: local coding conventions
@@ -151,6 +169,8 @@ For ingestion-only throughput and raw payload bandwidth:
 ```powershell
 dotnet test .\Worksheet.Tests\Worksheet.Tests.csproj --no-restore --filter "FullyQualifiedName~IngestionProfileTests" --logger "console;verbosity=detailed"
 ```
+
+`IngestionProfileTests.ProfileSnapshotCopyCost` reports the live-versus-copied snapshot cost for one-signal, two-signal, and spectral-width selections.
 
 For real CHASM channel/consumer ingestion throughput:
 

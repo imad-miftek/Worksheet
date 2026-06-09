@@ -13,9 +13,11 @@ namespace Worksheet.Services
         private readonly Dispatcher _dispatcher;
         private readonly DataStore _dataStore;
         private readonly DataSource _dataSource;
+        private readonly OscilloscopeBuffer _oscilloscopeBuffer;
         private readonly ChasmDataSource _chasmDataSource;
         private readonly Chasm _chasm;
         private readonly PlotProcessor _plotProcessor;
+        private readonly OscilloscopePlotProcessor _oscilloscopePlotProcessor;
         private readonly GateProcessor _gateProcessor;
         private readonly ProcessingEngine _processingEngine;
         private readonly RenderingEngine _renderingEngine;
@@ -30,20 +32,30 @@ namespace Worksheet.Services
             Dispatcher dispatcher,
             TimeSpan processingInterval,
             TimeSpan renderingInterval,
-            ChasmOptions? chasmOptions = null)
+            ChasmOptions? chasmOptions = null,
+            TimeSpan? oscilloscopeProcessingInterval = null)
         {
             _dispatcher = dispatcher;
             _dataStore = new DataStore();
             _chasmOptions = chasmOptions ?? ChasmOptions.Default;
             _dataSource = new DataSource(_chasmOptions.SignalLayout, _chasmOptions.WindowCapacityEvents);
-            _chasmDataSource = new ChasmDataSource(_dataSource);
-            var producer = new MockProducer(_chasmOptions);
-            var consumer = new ChasmConsumer(producer.Reader, _chasmDataSource);
-            _chasm = new Chasm(producer, consumer, _chasmDataSource);
+            _oscilloscopeBuffer = new OscilloscopeBuffer();
+            var pipeline = ChasmPipelineFactory.CreateMock(_dataSource, _chasmOptions, _oscilloscopeBuffer);
+            _chasmDataSource = pipeline.ChasmDataSource;
+            _chasm = pipeline.Chasm;
 
             _plotProcessor = new PlotProcessor(_chasmDataSource);
+            _oscilloscopePlotProcessor = new OscilloscopePlotProcessor(_oscilloscopeBuffer);
             _gateProcessor = new GateProcessor(_chasmDataSource);
-            _processingEngine = new ProcessingEngine(_dataStore, _plotProcessor, _gateProcessor, () => _chasm.DataVersion, processingInterval);
+            var scopeInterval = oscilloscopeProcessingInterval ?? TimeSpan.FromMilliseconds(33);
+            var pipelines = CreatePlotPipelines(processingInterval, scopeInterval);
+            _processingEngine = new ProcessingEngine(
+                _dataStore,
+                pipelines,
+                _gateProcessor,
+                () => _chasm.DataVersion,
+                pipelines.FastestCadence,
+                parameterPlotInterval: processingInterval);
             _renderingEngine = new RenderingEngine(_dataStore, dispatcher, renderingInterval);
             _featureSelection = new FeatureSelectionStrategy();
         }
@@ -54,6 +66,19 @@ namespace Worksheet.Services
         public FeatureSelectionStrategy FeatureSelection => _featureSelection;
         public bool IsStreamingEnabled => _chasm.IsStreamingEnabled;
         public int WindowCapacity => _chasm.WindowCapacity;
+
+        private PlotPipelineRegistry CreatePlotPipelines(TimeSpan parameterCadence, TimeSpan oscilloscopeCadence)
+        {
+            var registry = new PlotPipelineRegistry();
+            var parameterPipeline = new ParameterPlotPipeline(_plotProcessor, () => _chasm.DataVersion, parameterCadence);
+
+            registry.Register(PlotType.Histogram, parameterPipeline);
+            registry.Register(PlotType.Pseudocolor, parameterPipeline);
+            registry.Register(PlotType.SpectralRibbon, parameterPipeline);
+            registry.Register(PlotType.Oscilloscope, new OscilloscopePlotPipeline(_oscilloscopePlotProcessor, () => _oscilloscopeBuffer.Version, oscilloscopeCadence));
+
+            return registry;
+        }
 
         public void Start()
         {
@@ -168,9 +193,11 @@ namespace Worksheet.Services
                 HistogramAverageComputeMs: compute.HistogramAverageMs,
                 PseudocolorAverageComputeMs: compute.PseudocolorAverageMs,
                 SpectralRibbonAverageComputeMs: compute.SpectralRibbonAverageMs,
+                OscilloscopeAverageComputeMs: compute.OscilloscopeAverageMs,
                 HistogramAverageRenderMs: render.HistogramAverageMs,
                 PseudocolorAverageRenderMs: render.PseudocolorAverageMs,
                 SpectralRibbonAverageRenderMs: render.SpectralRibbonAverageMs,
+                OscilloscopeAverageRenderMs: render.OscilloscopeAverageMs,
                 DeltaAppliedCount: incremental.DeltaAppliedCount,
                 FullRebuildCount: incremental.FullRebuildCount,
                 SequenceGapCount: incremental.SequenceGapCount);

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using Worksheet.Models;
 using Worksheet.Services;
 using Xunit;
@@ -216,11 +217,11 @@ public sealed class IngestionProfileTests
     [InlineData(1, 1, 60)]
     [InlineData(6, 9, 50)]
     [InlineData(6, 9, 60)]
-    public void ProfileSignalEventConversionToColumnMajor(int lasers, int features, int channels)
+    public void ProfileEventConversionToColumnMajor(int lasers, int features, int channels)
     {
         var layout = new SignalLayout(lasers, features, channels);
-        var converter = new EventBatchConverter<SignalEvent>(layout, maxBatchSize: BatchSize);
-        var events = CreateSignalEvents(layout.SignalCount, BatchSize, offset: 0);
+        var converter = new EventBatchConverter(layout, maxBatchSize: BatchSize);
+        var events = CreateEvents(layout.SignalCount, BatchSize, offset: 0);
         IReadOnlyList<ColumnMajorEventBatch> batches = Array.Empty<ColumnMajorEventBatch>();
 
         var elapsed = Measure(() =>
@@ -231,7 +232,7 @@ public sealed class IngestionProfileTests
 
         var batch = Assert.Single(batches);
         Assert.Equal(BatchSize, batch.Count);
-        WriteThroughput($"SignalEvent convert to flat column-major {lasers}x{features}x{channels}", layout, BatchCount * BatchSize, elapsed);
+        WriteThroughput($"Event convert to flat column-major {lasers}x{features}x{channels}", layout, BatchCount * BatchSize, elapsed);
     }
 
     [Theory]
@@ -240,12 +241,12 @@ public sealed class IngestionProfileTests
     [InlineData(1, 1, 60)]
     [InlineData(6, 9, 50)]
     [InlineData(6, 9, 60)]
-    public void ProfileSignalEventConversionAndAppend(int lasers, int features, int channels)
+    public void ProfileEventConversionAndAppend(int lasers, int features, int channels)
     {
         var layout = new SignalLayout(lasers, features, channels);
         var source = new DataSource(layout, windowCapacity: BatchCount * BatchSize);
-        var converter = new EventBatchConverter<SignalEvent>(layout, maxBatchSize: BatchSize);
-        var events = CreateSignalEvents(layout.SignalCount, BatchSize, offset: 0);
+        var converter = new EventBatchConverter(layout, maxBatchSize: BatchSize);
+        var events = CreateEvents(layout.SignalCount, BatchSize, offset: 0);
 
         var elapsed = Measure(() =>
         {
@@ -257,7 +258,107 @@ public sealed class IngestionProfileTests
         });
 
         Assert.Equal(BatchCount * BatchSize, source.TotalEventsIngested);
-        WriteThroughput($"SignalEvent convert+append {lasers}x{features}x{channels}", layout, BatchCount * BatchSize, elapsed);
+        WriteThroughput($"Event convert+append {lasers}x{features}x{channels}", layout, BatchCount * BatchSize, elapsed);
+    }
+
+    [Theory]
+    [Trait("Category", "Profile")]
+    [InlineData(1, 1, 51)]
+    [InlineData(1, 1, 60)]
+    [InlineData(6, 9, 50)]
+    [InlineData(6, 9, 60)]
+    public void ProfileEventProducerPublish(int lasers, int features, int channels)
+    {
+        var layout = new SignalLayout(lasers, features, channels);
+        var producer = new EventProducer(
+            layout,
+            channelCapacityBatches: BatchCount,
+            maxBatchSize: BatchSize);
+        var events = CreateEvents(layout.SignalCount, BatchSize, offset: 0);
+
+        producer.Start();
+
+        var elapsed = Measure(() =>
+        {
+            for (int i = 0; i < BatchCount; i++)
+                producer.Publish(events);
+        });
+
+        producer.Stop();
+
+        WriteThroughput($"EventProducer publish {lasers}x{features}x{channels}", layout, BatchCount * BatchSize, elapsed);
+    }
+
+    [Theory]
+    [Trait("Category", "Profile")]
+    [InlineData(1, 1, 51)]
+    [InlineData(1, 1, 60)]
+    [InlineData(6, 9, 50)]
+    [InlineData(6, 9, 60)]
+    public void ProfileEventProducerPublishColumnMajor(int lasers, int features, int channels)
+    {
+        var layout = new SignalLayout(lasers, features, channels);
+        var producer = new EventProducer(
+            layout,
+            channelCapacityBatches: BatchCount,
+            maxBatchSize: BatchSize);
+        var values = CreateFlatColumnMajorBatch(layout.SignalCount, BatchSize, offset: 0);
+
+        producer.Start();
+
+        var elapsed = Measure(() =>
+        {
+            for (int i = 0; i < BatchCount; i++)
+                producer.PublishColumnMajor(values, BatchSize);
+        });
+
+        producer.Stop();
+
+        WriteThroughput($"EventProducer publish flat column-major {lasers}x{features}x{channels}", layout, BatchCount * BatchSize, elapsed);
+    }
+
+    [Theory]
+    [Trait("Category", "Profile")]
+    [InlineData("histogram", 1, 1, 51, 1)]
+    [InlineData("pseudocolor", 1, 1, 51, 2)]
+    [InlineData("spectral", 1, 1, 51, 42)]
+    [InlineData("large-pseudocolor", 6, 9, 60, 2)]
+    [InlineData("large-spectral", 6, 9, 60, 42)]
+    public void ProfileSnapshotCopyCost(string label, int lasers, int features, int channels, int selectedSignals)
+    {
+        var layout = new SignalLayout(lasers, features, channels);
+        int eventCount = BatchCount * BatchSize;
+        var source = new DataSource(layout, windowCapacity: eventCount);
+        var batch = CreateFlatColumnMajorBatch(layout.SignalCount, BatchSize, offset: 0);
+        for (int i = 0; i < BatchCount; i++)
+            source.AppendBatchColumnMajor(batch, BatchSize);
+
+        int[] selected = Enumerable.Range(0, Math.Min(selectedSignals, layout.SignalCount)).ToArray();
+
+        var liveElapsed = Measure(() =>
+        {
+            for (int i = 0; i < BatchCount; i++)
+            {
+                if (selected.Length == 1)
+                    _ = source.GetSnapshot(selected[0]);
+                else
+                    _ = source.GetSnapshot(selected);
+            }
+        });
+
+        var copyElapsed = Measure(() =>
+        {
+            for (int i = 0; i < BatchCount; i++)
+            {
+                if (selected.Length == 1)
+                    _ = source.GetSnapshotCopy(selected[0]);
+                else
+                    _ = source.GetSnapshotCopy(selected);
+            }
+        });
+
+        WriteSnapshotTiming($"Snapshot {label} live {lasers}x{features}x{channels} selected={selected.Length}", layout, selected.Length, eventCount, liveElapsed);
+        WriteSnapshotTiming($"Snapshot {label} copy {lasers}x{features}x{channels} selected={selected.Length}", layout, selected.Length, eventCount, copyElapsed);
     }
 
     private static TimeSpan Measure(Action action)
@@ -285,6 +386,16 @@ public sealed class IngestionProfileTests
         Console.WriteLine(line);
     }
 
+    private void WriteSnapshotTiming(string label, SignalLayout layout, int selectedSignals, int eventCount, TimeSpan elapsed)
+    {
+        double seconds = Math.Max(elapsed.TotalSeconds, 1e-9);
+        double snapshotsPerSecond = BatchCount / seconds;
+        double copiedMiB = (double)selectedSignals * eventCount * sizeof(double) / (1024 * 1024);
+        string line = $"{label}: {elapsed.TotalMilliseconds:F2} ms for {BatchCount} snapshots, {snapshotsPerSecond:F0} snapshots/sec, {copiedMiB:F1} MiB logical payload";
+        _output.WriteLine(line);
+        Console.WriteLine(line);
+    }
+
     private static double[][] CreateBatch(int signalCount, int count, int offset)
     {
         var signals = AllocateBatch(signalCount, count);
@@ -299,16 +410,16 @@ public sealed class IngestionProfileTests
         return values;
     }
 
-    private static SignalEvent[] CreateSignalEvents(int signalCount, int count, int offset)
+    private static Event[] CreateEvents(int signalCount, int count, int offset)
     {
-        var events = new SignalEvent[count];
+        var events = new Event[count];
         for (int e = 0; e < count; e++)
         {
             var values = new double[signalCount];
             for (int s = 0; s < signalCount; s++)
                 values[s] = 1 + (((offset + e + 1) * (s + 3) * 7919) % 100_000_000);
 
-            events[e] = new SignalEvent(values);
+            events[e] = new Event(values, EventFactory.CreateAnalogCapture(e));
         }
 
         return events;

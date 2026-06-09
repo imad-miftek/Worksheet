@@ -23,9 +23,9 @@ public sealed class EventBatchConverterTests
         var converter = CreateConverter(signalCount: 3);
         var events = new[]
         {
-            new TestEvent([10, 20, 30]),
-            new TestEvent([11, 21, 31]),
-            new TestEvent([12, 22, 32]),
+            EventFactory.CreateEvent(10, 20, 30),
+            EventFactory.CreateEvent(11, 21, 31),
+            EventFactory.CreateEvent(12, 22, 32),
         };
 
         var batch = Assert.Single(converter.Convert(events));
@@ -47,9 +47,9 @@ public sealed class EventBatchConverterTests
         var converter = CreateConverter(signalCount: 2, maxBatchSize: 2);
         var events = new[]
         {
-            new TestEvent([10, 20]),
-            new TestEvent([11, 21]),
-            new TestEvent([12, 22]),
+            EventFactory.CreateEvent(10, 20),
+            EventFactory.CreateEvent(11, 21),
+            EventFactory.CreateEvent(12, 22),
         };
 
         var batches = converter.Convert(events);
@@ -67,9 +67,9 @@ public sealed class EventBatchConverterTests
         var converter = CreateConverter(signalCount: 3, parallelCellThreshold: 1);
         var events = new[]
         {
-            new TestEvent([10, 20, 30]),
-            new TestEvent([11, 21, 31]),
-            new TestEvent([12, 22, 32]),
+            EventFactory.CreateEvent(10, 20, 30),
+            EventFactory.CreateEvent(11, 21, 31),
+            EventFactory.CreateEvent(12, 22, 32),
         };
 
         var batch = Assert.Single(converter.Convert(events));
@@ -84,6 +84,21 @@ public sealed class EventBatchConverterTests
     }
 
     [Fact]
+    public void ConvertUsesParametersAndIgnoresAnalogCapture()
+    {
+        var converter = CreateConverter(signalCount: 2);
+        var events = new[]
+        {
+            new Event([10, 20], new AnalogCapture([100, 101, 102, 103], channelCount: 2, timestampCount: 2)),
+            new Event([11, 21], new AnalogCapture([200, 201, 202, 203], channelCount: 2, timestampCount: 2)),
+        };
+
+        var batch = Assert.Single(converter.Convert(events));
+
+        Assert.Equal([10, 11, 20, 21], batch.Values);
+    }
+
+    [Fact]
     public void ConverterExposesParallelThreshold()
     {
         var converter = CreateConverter(signalCount: 3, parallelCellThreshold: 123);
@@ -92,12 +107,12 @@ public sealed class EventBatchConverterTests
     }
 
     [Fact]
-    public void ConvertRejectsSignalEventsThatDoNotMatchLayout()
+    public void ConvertRejectsEventsThatDoNotMatchLayout()
     {
         var layout = new SignalLayout(1, 1, 3);
-        var converter = new EventBatchConverter<SignalEvent>(layout);
+        var converter = new EventBatchConverter(layout);
 
-        var ex = Assert.Throws<ArgumentException>(() => converter.Convert([new SignalEvent([10, 20])]));
+        var ex = Assert.Throws<ArgumentException>(() => converter.Convert([EventFactory.CreateEvent(10, 20)]));
 
         Assert.Contains("expected 3", ex.Message);
     }
@@ -109,9 +124,9 @@ public sealed class EventBatchConverterTests
         var channel = Channel.CreateUnbounded<IEventBatch>();
         var events = new[]
         {
-            new TestEvent([10, 20]),
-            new TestEvent([11, 21]),
-            new TestEvent([12, 22]),
+            EventFactory.CreateEvent(10, 20),
+            EventFactory.CreateEvent(11, 21),
+            EventFactory.CreateEvent(12, 22),
         };
 
         int written = converter.TryWriteTo(channel.Writer, events);
@@ -126,18 +141,15 @@ public sealed class EventBatchConverterTests
         Assert.Equal([12, 22], second.Values);
     }
 
-    private static EventBatchConverter<TestEvent> CreateConverter(
+    private static EventBatchConverter CreateConverter(
         int signalCount,
         int maxBatchSize = 1000,
-        int parallelCellThreshold = EventBatchConverter<TestEvent>.DefaultParallelCellThreshold)
+        int parallelCellThreshold = EventBatchConverter.DefaultParallelCellThreshold)
     {
         var layout = new SignalLayout(1, 1, signalCount);
-        return new EventBatchConverter<TestEvent>(
+        return new EventBatchConverter(
             layout,
-            static (ev, signalIndex) => ev.Values[signalIndex],
             maxBatchSize,
             parallelCellThreshold);
     }
-
-    private sealed record TestEvent(double[] Values);
 }

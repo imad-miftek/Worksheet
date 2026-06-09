@@ -171,6 +171,8 @@
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
                             </Grid.RowDefinitions>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
@@ -192,14 +194,20 @@
                             <TextBlock Grid.Row="4" Grid.Column="0" Style="{StaticResource MetricLabelStyle}" Text="Spectral Ribbon Plot Average Compute Time:" Margin="0,0,8,8" />
                             <TextBlock x:Name="SpectralComputeValueText" Grid.Row="4" Grid.Column="1" Style="{StaticResource MetricValueStyle}" Text="--" Margin="0,0,0,8" />
 
-                            <TextBlock Grid.Row="5" Grid.Column="0" Style="{StaticResource MetricLabelStyle}" Text="Histogram Average Render Time:" Margin="0,0,8,8" />
-                            <TextBlock x:Name="HistogramRenderValueText" Grid.Row="5" Grid.Column="1" Style="{StaticResource MetricValueStyle}" Text="--" Margin="0,0,0,8" />
+                            <TextBlock Grid.Row="5" Grid.Column="0" Style="{StaticResource MetricLabelStyle}" Text="Oscilloscope Average Compute Time:" Margin="0,0,8,8" />
+                            <TextBlock x:Name="OscilloscopeComputeValueText" Grid.Row="5" Grid.Column="1" Style="{StaticResource MetricValueStyle}" Text="--" Margin="0,0,0,8" />
 
-                            <TextBlock Grid.Row="6" Grid.Column="0" Style="{StaticResource MetricLabelStyle}" Text="Pseudocolor Average Render Time:" Margin="0,0,8,8" />
-                            <TextBlock x:Name="PseudocolorRenderValueText" Grid.Row="6" Grid.Column="1" Style="{StaticResource MetricValueStyle}" Text="--" Margin="0,0,0,8" />
+                            <TextBlock Grid.Row="6" Grid.Column="0" Style="{StaticResource MetricLabelStyle}" Text="Histogram Average Render Time:" Margin="0,0,8,8" />
+                            <TextBlock x:Name="HistogramRenderValueText" Grid.Row="6" Grid.Column="1" Style="{StaticResource MetricValueStyle}" Text="--" Margin="0,0,0,8" />
 
-                            <TextBlock Grid.Row="7" Grid.Column="0" Style="{StaticResource MetricLabelStyle}" Text="Spectral Ribbon Average Render Time:" Margin="0,0,8,0" />
-                            <TextBlock x:Name="SpectralRenderValueText" Grid.Row="7" Grid.Column="1" Style="{StaticResource MetricValueStyle}" Text="--" Margin="0,0,0,0" />
+                            <TextBlock Grid.Row="7" Grid.Column="0" Style="{StaticResource MetricLabelStyle}" Text="Pseudocolor Average Render Time:" Margin="0,0,8,8" />
+                            <TextBlock x:Name="PseudocolorRenderValueText" Grid.Row="7" Grid.Column="1" Style="{StaticResource MetricValueStyle}" Text="--" Margin="0,0,0,8" />
+
+                            <TextBlock Grid.Row="8" Grid.Column="0" Style="{StaticResource MetricLabelStyle}" Text="Spectral Ribbon Average Render Time:" Margin="0,0,8,8" />
+                            <TextBlock x:Name="SpectralRenderValueText" Grid.Row="8" Grid.Column="1" Style="{StaticResource MetricValueStyle}" Text="--" Margin="0,0,0,8" />
+
+                            <TextBlock Grid.Row="9" Grid.Column="0" Style="{StaticResource MetricLabelStyle}" Text="Oscilloscope Average Render Time:" Margin="0,0,8,0" />
+                            <TextBlock x:Name="OscilloscopeRenderValueText" Grid.Row="9" Grid.Column="1" Style="{StaticResource MetricValueStyle}" Text="--" Margin="0,0,0,0" />
                         </Grid>
                     </ScrollViewer>
                 </Grid>

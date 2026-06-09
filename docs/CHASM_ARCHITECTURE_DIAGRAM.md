@@ -7,7 +7,9 @@ This document explains the event pipeline in practical terms: where events are c
 ```mermaid
 flowchart LR
     Producer["MockProducer<br/>creates event batches"]
-    EventAdapter["EventBatchConverter&lt;TEvent&gt;<br/>normalizes DAQ event objects"]
+    EventProducer["EventProducer / IEventIngestionPort<br/>accepts Event objects or flat buffers"]
+    EventAdapter["EventBatchConverter&lt;Event&gt;<br/>normalizes DAQ event objects"]
+    ScopeBuffer["OscilloscopeBuffer<br/>bounded latest waveform captures"]
     Channel["Bounded Channel&lt;IEventBatch&gt;<br/>short queue between producer and consumer"]
     Consumer["ChasmConsumer<br/>reads batches asynchronously"]
     Adapter["ChasmDataSource<br/>adapts batch layouts into DataSource writes"]
@@ -17,7 +19,11 @@ flowchart LR
     UI["ViewportSession / WPF UI<br/>starts streaming and coordinates updates"]
 
     UI -->|"start / stop streaming"| Producer
-    EventAdapter -.->|"ColumnMajorEventBatch"| Channel
+    EventProducer -->|"PublishEvents(IReadOnlyList<Event>)"| EventAdapter
+    EventProducer -->|"optional Event.AnalogCapture"| ScopeBuffer
+    Producer -->|"optional synthetic AnalogCapture"| ScopeBuffer
+    EventAdapter -->|"ColumnMajorEventBatch"| Channel
+    EventProducer -->|"PublishColumnMajor(double[], count)"| Channel
     Producer -->|"TryWrite(batch)"| Channel
     Channel -->|"ReadAllAsync"| Consumer
     Consumer -->|"Append(batch)"| Adapter
@@ -36,6 +42,35 @@ Think of the pipeline like a factory line.
 - `DataSource` is the warehouse shelf that keeps only the newest events.
 - The plot processors read from the shelf and build display data.
 - The renderers draw that display data on screen.
+
+## Standard Layer Model
+
+The CHASM names make more sense if every class is assigned to one layer. Do not read `Producer`, `Consumer`, and `Adapter` as equal business concepts; they are different mechanics inside one ingestion pipeline.
+
+| Layer | Responsibility | Current classes | Standard rule |
+| --- | --- | --- | --- |
+| Ingress source | Creates or receives incoming event batches and puts them on the queue | `MockProducer`, `EventProducer`, `IEventIngestionPort` | This is the only layer that talks to mock generation, DAQ callbacks, or external acquisition APIs. |
+| Batch normalization | Converts event object parameters into CHASM batch payloads | `EventBatchConverter`, `Event` | Event parameters are normalized before they enter the CHASM queue. |
+| Waveform stream | Keeps transient waveform captures for oscilloscope-style plots | `IAnalogCaptureSink`, `IOscilloscopeBuffer`, `OscilloscopeBuffer`, `AnalogCapture` | Waveform captures are not retained in `DataSource`; the oscilloscope stream drops old captures and favors newest data. |
+| Queue transport | Buffers batches between acquisition and storage | `Channel<IEventBatch>`, `IEventBatch`, `EventBatch`, `ColumnMajorEventBatch` | The queue carries CHASM batch messages only; it does not know about DAQ SDK objects or retained storage. |
+| Queue drain | Reads queued batches asynchronously | `ChasmConsumer`, `IConsumer` | This layer owns the async read loop only. It should not know batch memory layout details. |
+| Store append | Interprets CHASM batch payloads and appends them to retained memory | `ChasmDataSource`, `IChasmDataSource` | This is the only crossing point from temporary batch messages into the rolling `DataSource`. |
+| Retained store | Owns bounded raw event memory and snapshot access | `DataSource`, snapshots | This is the source of truth for retained events. It should not know mock, DAQ, or SDK types. |
+
+`ChasmPipelineFactory` is the composition layer. It does not process data; it wires one of the supported ingress modes:
+
+```text
+CreateMock(...)         -> MockProducer-based CHASM graph
+CreateEventIngress(...) -> EventProducer-based CHASM graph + IEventIngestionPort
+```
+
+The confusing part is that `EventProducer` is not the same kind of producer as `MockProducer` internally:
+
+- `MockProducer` actively generates parameter batches on its own background task. When an `IAnalogCaptureSink` is attached, it also publishes synthetic waveform captures for oscilloscope development.
+- `EventProducer` is a push ingress port; another owner calls `PublishEvents(...)` or `PublishColumnMajor(...)`.
+- When an `IAnalogCaptureSink` is attached, `EventProducer.PublishEvents(...)` also publishes `Event.AnalogCapture` to the waveform stream. The flat `PublishColumnMajor(...)` path does not publish waveform captures because that payload carries parameters only.
+
+They still both belong to the same layer because both feed `Channel<IEventBatch>`. That is the standardization point.
 
 ## The Entire Ingestion Pipeline
 
@@ -102,10 +137,10 @@ That means the producer does not write into `DataSource` directly. It writes int
 For real DAQ integration, the equivalent boundary is:
 
 ```text
-DAQ event-object batch -> EventBatchConverter<TEvent> -> ColumnMajorEventBatch -> Channel<IEventBatch>
+DAQ event-object batch -> EventBatchConverter -> ColumnMajorEventBatch -> Channel<IEventBatch>
 ```
 
-`EventBatchConverter<TEvent>` is intentionally narrow. It converts event-object batches into CHASM's normalized flat column-major batch shape. It does not own the DAQ SDK, the rolling buffer, processing, or rendering.
+`EventBatchConverter` is intentionally narrow. It converts `Event.Parameters` batches into CHASM's normalized flat column-major batch shape. It does not own the DAQ SDK, waveform capture, the rolling buffer, processing, or rendering.
 
 This keeps acquisition, queueing, storage, processing, and rendering separate enough to test and profile independently.
 
@@ -445,14 +480,38 @@ These are the invariants the design must protect.
 | The consumer does not need to know batch memory layout | `ChasmConsumer`, `IEventBatch` |
 | Unsupported batch layouts fail clearly | `ChasmDataSource` |
 
+## Snapshot Contract
+
+`DataSource` supports two snapshot styles:
+
+```text
+GetSnapshot(...)      -> live ring-buffer view
+GetSnapshotCopy(...)  -> stable contiguous copy
+```
+
+The live snapshot path is the default hot path for plot processors. It avoids allocations and lets histogram, pseudocolor, and spectral processing read selected columns directly from retained memory. The tradeoff is that the backing arrays can be updated by later ingestion while a processor is scanning them.
+
+The copied snapshot path exists for correctness-sensitive boundaries. It copies the selected logical window into new arrays, sets `StartIndex = 0`, and remains stable after later appends. It is cheap for one or two selected signals, but expensive for wide selections such as spectral ribbon copies over 42 signals.
+
 ## Event Object Conversion
 
 If a DAQ API provides batches of event objects, CHASM should not make `DataSource` understand that DAQ-specific object model. Instead, convert the object batch at the ingestion edge:
 
 ```text
-IReadOnlyList<TEvent>
-    -> EventBatchConverter<TEvent>
+IReadOnlyList<Event>
+    -> IEventIngestionPort.PublishEvents(...)
+    -> EventBatchConverter
     -> ColumnMajorEventBatch
+    -> Channel<IEventBatch>
+```
+
+If the DAQ can already provide a flat column-major payload, use the faster direct path:
+
+```text
+double[] values + eventCount
+    -> IEventIngestionPort.PublishColumnMajor(...)
+    -> ColumnMajorEventBatch
+    -> Channel<IEventBatch>
 ```
 
 The converter writes:
@@ -461,7 +520,38 @@ The converter writes:
 values[signalIndex * eventCount + eventIndex]
 ```
 
-For `SignalEvent` objects, the converter validates that each event has the expected `SignalLayout.SignalCount` before writing the output batch. Large conversions use a parallel signal-first path, while small conversions stay single-threaded to avoid scheduling overhead.
+For `Event` objects, the converter validates that each event has the expected `SignalLayout.SignalCount` before writing the output batch. Large conversions use a parallel signal-first path, while small conversions stay single-threaded to avoid scheduling overhead.
+
+`Event` is the full event envelope CHASM accepts from a DAQ adapter:
+
+```text
+Event.Parameters     -> flattened [laser, feature, channel] values used by plots
+Event.AnalogCapture  -> required [channel, timestamp] waveform source
+```
+
+`EventBatchConverter` reads `Parameters` only. `AnalogCapture` is deliberately not copied into `DataSource`; it remains attached to the event as the waveform source those parameters came from. The first waveform boundary is now `IAnalogCaptureSink` plus `OscilloscopeBuffer`, which gives oscilloscope plots a separate transient stream.
+
+`EventProducer` is intentionally a push boundary. It does not synthesize data like `MockProducer`; a DAQ callback or SDK adapter can call `PublishEvents(...)` with object batches or `PublishColumnMajor(...)` with flat buffers. The direct flat path avoids object conversion when the real DAQ can provide CHASM's preferred memory layout.
+
+For event objects, routing is split by payload:
+
+```text
+Event.Parameters
+    -> EventBatchConverter
+    -> ColumnMajorEventBatch
+    -> DataSource
+    -> histogram / pseudocolor / spectral ribbon
+
+Event.AnalogCapture
+    -> IAnalogCaptureSink
+    -> OscilloscopeBuffer
+    -> fast oscilloscope processing loop keyed by OscilloscopeBuffer.Version
+    -> OscilloscopePlotProcessor
+    -> OscilloscopeProcessedData
+    -> OscilloscopePlotView
+```
+
+`PublishColumnMajor(...)` is a no-copy path. The caller should treat the published `double[]` as transferred to CHASM and must not mutate or reuse it while the batch may still be queued or consumed.
 
 ## Why The Flat Path Is Faster
 
@@ -479,10 +569,15 @@ The CPU still has to copy the same amount of raw numeric data into `DataSource`,
 Recent profile runs showed this clearly. Machine-specific numbers vary, but the shape is useful:
 
 ```text
-SignalEvent object conversion path:
+Event object conversion path:
 1x1x51 convert+append:   about 900,840 events/sec
 6x9x50 convert+append:   about 50,769 events/sec
 6x9x60 convert+append:   about 39,060 events/sec
+
+EventProducer publish path:
+1x1x51 publish:          about 946,396 events/sec
+6x9x50 publish:          about 109,286 events/sec
+6x9x60 publish:          about 90,025 events/sec
 
 Flat prebuilt CHASM path:
 6x9x50 no-drop capture: about 269,743 events/sec
