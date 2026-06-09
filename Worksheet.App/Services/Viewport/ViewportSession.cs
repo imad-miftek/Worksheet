@@ -36,10 +36,9 @@ namespace Worksheet.Services
             _dataStore = new DataStore();
             _chasmOptions = chasmOptions ?? ChasmOptions.Default;
             _dataSource = new DataSource(_chasmOptions.SignalLayout, _chasmOptions.WindowCapacityEvents);
-            _chasmDataSource = new ChasmDataSource(_dataSource);
-            var producer = new MockProducer(_chasmOptions);
-            var consumer = new ChasmConsumer(producer.Reader, _chasmDataSource);
-            _chasm = new Chasm(producer, consumer, _chasmDataSource);
+            var pipeline = ChasmPipelineFactory.CreateMock(_dataSource, _chasmOptions);
+            _chasmDataSource = pipeline.ChasmDataSource;
+            _chasm = pipeline.Chasm;
 
             _plotProcessor = new PlotProcessor(_chasmDataSource);
             _gateProcessor = new GateProcessor(_chasmDataSource);

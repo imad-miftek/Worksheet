@@ -53,6 +53,13 @@ The CHASM names make more sense if every class is assigned to one layer. Do not 
 | Store append | Interprets CHASM batch payloads and appends them to retained memory | `ChasmDataSource`, `IChasmDataSource` | This is the only crossing point from temporary batch messages into the rolling `DataSource`. |
 | Retained store | Owns bounded raw event memory and snapshot access | `DataSource`, snapshots | This is the source of truth for retained events. It should not know mock, DAQ, or SDK types. |
 
+`ChasmPipelineFactory` is the composition layer. It does not process data; it wires one of the supported ingress modes:
+
+```text
+CreateMock(...)         -> MockProducer-based CHASM graph
+CreateEventIngress(...) -> EventProducer-based CHASM graph + IEventIngestionPort
+```
+
 The confusing part is that `EventProducer` is not the same kind of producer as `MockProducer` internally:
 
 - `MockProducer` actively generates data on its own background task.

@@ -50,6 +50,15 @@ Standardized ingestion layers:
 | Store append | Dispatches batch layouts into retained storage writes | `ChasmDataSource`, `IChasmDataSource` |
 | Retained store | Owns bounded raw event memory and snapshots | `DataSource` |
 
+Composition boundary:
+
+```text
+ChasmPipelineFactory.CreateMock(...)
+ChasmPipelineFactory.CreateEventIngress(...)
+```
+
+This factory is the explicit mock-vs-DAQ swap point. `ViewportSession` uses `CreateMock(...)` today. A future DAQ adapter should use `CreateEventIngress(...)` and publish into the returned `IEventIngestionPort`.
+
 Current mock ingestion path:
 
 ```text

@@ -96,6 +96,11 @@ The current architecture is built around a bounded rolling raw-event window:
 4. `ProcessingEngine` produces plot-ready data when retained data changes.
 5. `RenderingEngine` pushes updated data into the registered ScottPlot views.
 
+`ChasmPipelineFactory` is the acquisition swap point:
+
+- `CreateMock(...)` wires the current mock acquisition path.
+- `CreateEventIngress(...)` wires the production-style push path and returns an `IEventIngestionPort` for a DAQ adapter to call.
+
 Important semantics:
 
 - Memory usage is bounded by the configured window capacity.
